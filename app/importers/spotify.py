@@ -118,7 +118,11 @@ async def _get(
         client, "GET", f"{API}{path}", params=params,
         headers={"Authorization": f"Bearer {token}"},
     )
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError:
+        print(f"Spotify API Error response: {resp.text}")
+        raise
     return resp.json()
 
 
@@ -153,36 +157,33 @@ async def import_artist(spotify_artist_id: str, *, market: str = "US") -> Import
             resp.raise_for_status()
             data = resp.json()
 
-        # Full album objects (batched, up to 20 ids) → cover, release date, tracks.
+        # Full album objects (singular endpoint to avoid 403) -> cover, date, tracks.
         album_cover: dict[str, str | None] = {}
         album_release: dict[str, date | None] = {}
         track_stub: dict[str, dict] = {}
-        for batch in _chunk(album_ids, 20):
-            albums = await _get(
-                client, token, "/albums", {"ids": ",".join(batch), "market": market}
+        for aid in album_ids:
+            album = await _get(
+                client, token, f"/albums/{aid}", {"market": market}
             )
-            for album in albums.get("albums", []):
-                aid = album["id"]
-                imgs = album.get("images") or []
-                album_cover[aid] = imgs[0]["url"] if imgs else None
-                album_release[aid] = _parse_release_date(album.get("release_date"))
-                for t in album.get("tracks", {}).get("items", []):
-                    track_stub[t["id"]] = {
-                        "name": t["name"],
-                        "duration_ms": t.get("duration_ms"),
-                        "album_id": aid,
-                        "credit": ", ".join(a["name"] for a in t.get("artists", [])),
-                    }
+            imgs = album.get("images") or []
+            album_cover[aid] = imgs[0]["url"] if imgs else None
+            album_release[aid] = _parse_release_date(album.get("release_date"))
+            for t in album.get("tracks", {}).get("items", []):
+                track_stub[t["id"]] = {
+                    "name": t["name"],
+                    "duration_ms": t.get("duration_ms"),
+                    "album_id": aid,
+                    "credit": ", ".join(a["name"] for a in t.get("artists", [])),
+                }
 
-        # Full track objects (batched, up to 50 ids) → ISRC.
+        # Full track objects (singular endpoint to avoid 403 Forbidden) -> ISRC.
         isrc_by_track: dict[str, str | None] = {}
-        for batch in _chunk(list(track_stub.keys()), 50):
-            tracks = await _get(
-                client, token, "/tracks", {"ids": ",".join(batch), "market": market}
+        for tid in track_stub.keys():
+            t = await _get(
+                client, token, f"/tracks/{tid}", {"market": market}
             )
-            for t in tracks.get("tracks", []):
-                if t:
-                    isrc_by_track[t["id"]] = (t.get("external_ids") or {}).get("isrc")
+            if t:
+                isrc_by_track[t["id"]] = (t.get("external_ids") or {}).get("isrc")
 
         imported = ImportedArtist(
             name=artist_name, spotify_artist_id=spotify_artist_id, tracks=[]

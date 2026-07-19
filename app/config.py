@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # Throttling: dev-mode quota is small and measured over a rolling 30s window.
     # Requests are spaced by this interval; 429s are always honored via Retry-After.
     spotify_min_interval_seconds: float = 1.0
-    spotify_albums_page_limit: int = 50  # docs max; lower it on constrained networks
+    spotify_albums_page_limit: int = 10  # Spotify api max limit is 10 for some accounts
     spotify_max_retries: int = 4
 
     # --- Web / sessions ---
