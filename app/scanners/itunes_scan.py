@@ -43,6 +43,7 @@ def _song_to_candidate(item: dict) -> RawCandidate | None:
         raw_json={
             "collection_id": item.get("collectionId"),
             "collection_view_url": item.get("collectionViewUrl"),
+            "preview_url": item.get("previewUrl"),
         },
     )
 

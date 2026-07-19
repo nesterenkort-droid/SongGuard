@@ -71,3 +71,13 @@ async def db_session():
         await trans.rollback()
         await conn.close()
         await engine.dispose()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def cleanup_redis():
+    """Close the global Redis client's connection pool after each test
+    to prevent event loop mismatch errors.
+    """
+    yield
+    from app.redis_client import redis_client
+    await redis_client.aclose()

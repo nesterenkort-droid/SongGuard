@@ -40,6 +40,20 @@ class Settings(BaseSettings):
     spotify_albums_page_limit: int = 10  # Spotify api max limit is 10 for some accounts
     spotify_max_retries: int = 4
 
+    # --- YouTube ---
+    youtube_api_key: str | None = None
+    youtube_search_quota_daily: int = 90
+    youtube_min_interval_seconds: float = 1.0
+
+    # --- AI Judge / Anthropic ---
+    anthropic_api_key: str | None = None
+    ai_judge_monthly_budget_usd: float = 10.0
+
+    # --- Scheduler & Decay ---
+    scheduler_interval_minutes: int = 15
+    hot_track_decay_days: int = 60
+    hot_track_max_clean_scans: int = 10
+
     # --- Web / sessions ---
     base_url: str = "http://localhost:8080"  # public URL, used to build links
     session_cookie: str = "tg_session"

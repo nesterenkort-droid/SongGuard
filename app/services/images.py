@@ -63,6 +63,20 @@ def hash_bytes(content: bytes) -> tuple[str, str]:
         return phash(img), dhash(img)
 
 
+def hash_bytes_cropped(content: bytes) -> tuple[str, str]:
+    """Загружает изображение, обрезает его до квадрата 1:1 по центру и возвращает (phash, dhash)."""
+    with Image.open(io.BytesIO(content)) as img:
+        img.load()
+        width, height = img.size
+        min_dim = min(width, height)
+        left = (width - min_dim) // 2
+        top = (height - min_dim) // 2
+        right = left + min_dim
+        bottom = top + min_dim
+        cropped = img.crop((left, top, right, bottom))
+        return phash(cropped), dhash(cropped)
+
+
 def save_cover(content: bytes, dest_dir: str, stem: str) -> str:
     """Persist cover bytes; return the stored filename (basename)."""
     os.makedirs(dest_dir, exist_ok=True)

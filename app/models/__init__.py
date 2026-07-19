@@ -34,10 +34,13 @@ from app.models.detection import (
     WL_SCOPE_GLOBAL,
     WL_SCOPE_TRACK,
     WL_SPOTIFY_ARTIST,
+    AppSetting,
     Finding,
     FindingEvent,
     PirateEntity,
     PlatformCandidate,
+    QuotaLedger,
+    ScanJob,
     WhitelistEntry,
 )
 from app.models.notify import (
@@ -112,6 +115,9 @@ __all__ = [
     "PE_SPOTIFY_LABEL",
     "PE_APPLE_LABEL",
     "PE_DISTRIBUTOR",
+    "ScanJob",
+    "QuotaLedger",
+    "AppSetting",
     # Notifications (M3)
     "Subscription",
     "NotificationOutbox",

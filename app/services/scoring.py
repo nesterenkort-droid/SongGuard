@@ -208,7 +208,7 @@ def _label_signal(cand: CandidateFacts, ctx: DetectionContext) -> Signal | None:
 
     # Strongest: known pirate entity or the DistroKid `\d+ Records DK` autolabel.
     for c in candidates:
-        if c in ctx.pirate_labels or _RECORDS_DK_RE.match(c):
+        if c in ctx.pirate_labels or _RECORDS_DK_RE.match(c) or "distrokid" in c:
             shown = cand.parsed_plabel or cand.parsed_provider
             return Signal(
                 "pirate_label",
@@ -232,7 +232,7 @@ def _label_signal(cand: CandidateFacts, ctx: DetectionContext) -> Signal | None:
 
 
 def score_candidate(
-    cand: CandidateFacts, track: TrackFacts, ctx: DetectionContext
+    cand: CandidateFacts, track: TrackFacts, ctx: DetectionContext, audio_match: dict | None = None
 ) -> ScoreResult:
     """Score a candidate against one of our tracks. Assumes the whitelist gate has
     already been checked by the caller (a gated candidate should not be scored)."""
@@ -293,6 +293,18 @@ def score_candidate(
     if cand.published_at and track.release_date and cand.published_at > track.release_date:
         delta_days = (cand.published_at - track.release_date).days
         add("date_delta", f"Выпущено на {delta_days} дн. позже оригинала", delta_days, W_DATE_DELTA)
+
+    # --- Audio Match (Panako) ---
+    if audio_match is not None:
+        if audio_match.get("matched"):
+            stretch = audio_match.get("true_stretch")
+            if stretch is not None:
+                human = f"Звук совпадает по отпечатку Panako (скорость {stretch:.3f}x)"
+            else:
+                human = "Звук совпадает по отпечатку Panako"
+            add("audio_match", human, stretch, 40)
+        else:
+            add("audio_no_match", "Звук не совпадает с оригиналом", None, -50)
 
     score = sum(s.contribution for s in signals)
     if score >= THRESHOLD_HIGH:

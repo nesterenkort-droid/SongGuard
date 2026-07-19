@@ -10,8 +10,11 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # curl is used by the web container's healthcheck.
+# java, ffmpeg, and sox are used by Panako for audio decoding and fingerprinting.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl openjdk-17-jre-headless ffmpeg sox \
+    && mkdir -p /app/bin \
+    && curl -L -o /app/bin/panako.jar https://github.com/JorenSix/Panako/releases/download/joss/Panako-2.1-all.jar \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first (cached until the lockfile changes).

@@ -11,9 +11,10 @@ normalized contribution, weight, and the thresholds version — without that we 
 neither debug nor later tune the scorer (PLAN.md §6, §7 Ярус 2/3).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -230,3 +231,62 @@ class PirateEntity(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
+
+
+class ScanJob(Base):
+    """Очередь заданий на сканирование трека на конкретной платформе."""
+
+    __tablename__ = "scan_jobs"
+    __table_args__ = (
+        UniqueConstraint("track_id", "platform", name="uq_scan_job_track_platform"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    track_id: Mapped[int] = mapped_column(
+        ForeignKey("tracks.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[str] = mapped_column(String(16), index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=10, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    last_scanned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    outcome: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    track: Mapped["Track"] = relationship()  # noqa: F821
+
+
+class QuotaLedger(Base):
+    """Журнал ежедневного использования квот внешних API."""
+
+    __tablename__ = "quota_ledger"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[date] = mapped_column(Date, index=True, server_default=func.current_date())
+    api_name: Mapped[str] = mapped_column(String(32), index=True)
+    units_consumed: Mapped[int] = mapped_column(Integer, default=1)
+    outcome: Mapped[str] = mapped_column(String(32), default="success")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AppSetting(Base):
+    """Динамические настройки приложения (веса, пороги, лимиты расходов)."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    value: Mapped[str] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+

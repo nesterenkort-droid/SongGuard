@@ -11,11 +11,13 @@ scheduled for the next fixed UTC slot (08:00, and Monday 08:00 respectively) and
 flush loop groups same-slot rows into one digest message per user.
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import (
     KIND_FINDING,
     MODE_DAILY,
@@ -27,6 +29,8 @@ from app.models import (
     NotificationOutbox,
     Subscription,
 )
+
+logger = logging.getLogger("trackguard.notify")
 
 DIGEST_HOUR_UTC = 8  # fixed daily/weekly send slot
 
@@ -142,3 +146,24 @@ async def enqueue_finding_notifications(
         created += 1
     await session.flush()
     return created
+
+
+
+
+
+async def send_admin_alert(text: str) -> None:
+    """Отправляет текстовое сообщение всем администраторам в Telegram."""
+    if not settings.telegram_bot_token or not settings.admin_ids:
+        logger.warning("Telegram-оповещения не настроены. Сообщение: %s", text)
+        return
+
+    from aiogram import Bot
+    bot = Bot(token=settings.telegram_bot_token)
+    try:
+        for admin_id in settings.admin_ids:
+            try:
+                await bot.send_message(admin_id, text, parse_mode="Markdown")
+            except Exception as e:
+                logger.warning("Не удалось отправить оповещение админу %s: %s", admin_id, e)
+    finally:
+        await bot.session.close()

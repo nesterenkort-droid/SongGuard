@@ -21,6 +21,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import (
     PE_APPLE_LABEL,
     PE_DISTRIBUTOR,
@@ -44,13 +45,19 @@ from app.models import (
     FindingEvent,
     PirateEntity,
     PlatformCandidate,
+    ScanJob,
     Track,
     WhitelistEntry,
 )
-from app.scanners import itunes_scan, spotify_scan
+from app.scanners import itunes_scan, spotify_scan, youtube_scan
 from app.scanners.base import RawCandidate
+import os
+import tempfile
 from app.services import audit, images, notify
 from app.services.normalize import detect_variant, normalize_title
+from app.services.panako import query_candidate, ORIGINALS_DIR
+from app.services.audio_downloader import download_youtube_audio, download_preview_audio
+from app.services.ai_judge import evaluate_candidate
 from app.services.scoring import (
     BAND_LOW,
     CandidateFacts,
@@ -244,6 +251,8 @@ async def _persist_finding(
     track: Track,
     result: ScoreResult,
     summary: ScanSummary,
+    audio_match: dict | None = None,
+    llm: dict | None = None,
 ) -> None:
     finding = await session.scalar(
         select(Finding).where(
@@ -255,6 +264,30 @@ async def _persist_finding(
         finding = Finding(candidate_id=cand.id, track_id=track.id, status=STATUS_DETECTED)
         session.add(finding)
         summary.findings_created += 1
+
+        # Кросс-платформенный триггер: при нахождении пиратки на Spotify/Apple автоматически
+        # ставим задачу на YouTube-сканирование для этого трека (приоритет 50)
+        if cand.platform in ["spotify", "itunes"] and result.band == "high":
+            existing_job = await session.scalar(
+                select(ScanJob).where(
+                    ScanJob.track_id == track.id,
+                    ScanJob.platform == "youtube",
+                )
+            )
+            if not existing_job:
+                session.add(
+                    ScanJob(
+                        track_id=track.id,
+                        platform="youtube",
+                        priority=50,
+                        status="pending",
+                    )
+                )
+            else:
+                existing_job.priority = max(existing_job.priority, 50)
+                if existing_job.status in ["completed", "failed"]:
+                    existing_job.status = "pending"
+                    existing_job.outcome = None
     else:
         summary.findings_updated += 1
     # Refresh the score/signals, but never override a human decision.
@@ -262,8 +295,25 @@ async def _persist_finding(
     finding.band = result.band
     finding.signals = result.signals_json()
     finding.thresholds_version = result.thresholds_version
+    finding.audio_match = audio_match
+    finding.llm = llm
+
     if finding.status not in RESOLVED_STATUSES:
-        finding.status = STATUS_DETECTED
+        if llm:
+            verdict = llm.get("verdict")
+            if verdict == "remix":
+                finding.status = STATUS_REMIX_REVIEW
+            elif verdict == "pirate":
+                finding.status = STATUS_PENDING_REVIEW
+            elif verdict == "safe":
+                finding.status = STATUS_DISMISSED
+            else:
+                finding.status = STATUS_PENDING_REVIEW
+        else:
+            if result.band == "high":
+                finding.status = STATUS_PENDING_REVIEW
+            else:
+                finding.status = STATUS_DETECTED
     await session.flush()
 
     if is_new:
@@ -318,11 +368,75 @@ async def ingest_candidates(
                     cand_facts = _candidate_facts(cand)
 
             for track, result in _best_results(cand_facts, track_pairs, ctx):
+                # 1. Check if we should/can run audio matching (Panako)
+                audio_match_dict = None
+                original_exists = os.path.exists(os.path.join(ORIGINALS_DIR, f"{track.id}_1.00.wav"))
+
+                if original_exists and result.band in ["mid", "high"]:
+                    temp_wav = os.path.join(tempfile.gettempdir(), f"query_{track.id}_{cand.id}.wav")
+                    download_success = False
+
+                    if cand.platform == "youtube" and cand.url:
+                        download_success = await download_youtube_audio(cand.url, temp_wav)
+                    elif cand.platform == "itunes" and cand.raw_json:
+                        preview_url = cand.raw_json.get("preview_url")
+                        if preview_url:
+                            download_success = await download_preview_audio(preview_url, temp_wav)
+
+                    if download_success and os.path.exists(temp_wav):
+                        match_res = await query_candidate(temp_wav)
+                        try:
+                            os.remove(temp_wav)
+                        except Exception:  # noqa: BLE001
+                            pass
+
+                        if match_res.matched and match_res.track_id == track.id:
+                            audio_match_dict = {
+                                "matched": True,
+                                "true_stretch": match_res.true_stretch,
+                                "score": match_res.score,
+                            }
+                        else:
+                            audio_match_dict = {
+                                "matched": False,
+                            }
+
+                # If audio check ran, re-score with audio match info
+                if audio_match_dict is not None:
+                    tf = _track_facts(artist, track)
+                    result = score_candidate(cand_facts, tf, ctx, audio_match=audio_match_dict)
+
+                # 2. Run LLM Judge if score is in the mid range (40-69)
+                llm_dict = None
+                if result.band == "mid":
+                    verdict = await evaluate_candidate(
+                        track_title=track.title,
+                        track_artist=artist.name,
+                        candidate_title=cand.title,
+                        candidate_uploader=cand.uploader or "Unknown",
+                        candidate_description=cand.description_raw or "",
+                        candidate_platform=cand.platform,
+                        duration_diff_sec=abs((cand.duration_ms or 0) - (track.duration_ms or 0)) / 1000.0,
+                        score_before_ai=result.score,
+                        audio_matched=bool(audio_match_dict and audio_match_dict.get("matched")),
+                        audio_true_stretch=audio_match_dict.get("true_stretch") if audio_match_dict else None,
+                    )
+                    llm_dict = {
+                        "verdict": verdict.verdict,
+                        "confidence": verdict.confidence,
+                        "reasoning_ru": verdict.reasoning_ru,
+                        "cost_usd": verdict.cost_usd,
+                    }
+
                 if result.band == "high":
                     summary.high += 1
                 elif result.band == "mid":
                     summary.mid += 1
-                await _persist_finding(session, artist, cand, track, result, summary)
+
+                await _persist_finding(
+                    session, artist, cand, track, result, summary,
+                    audio_match=audio_match_dict, llm=llm_dict
+                )
     finally:
         if client is not None:
             await client.aclose()
@@ -375,6 +489,8 @@ async def run_scan_for_artist(
             if artist.spotify_artist_id:
                 raws.extend(await spotify_scan.search_tracks(q))
             raws.extend(await itunes_scan.search_tracks(q))
+            if settings.youtube_api_key:
+                raws.extend(await youtube_scan.search_tracks(q))
 
     ctx = await build_context(session, artist)
     summary = await ingest_candidates(session, artist, raws, ctx=ctx)
@@ -385,6 +501,8 @@ async def run_scan_for_artist(
             t.last_scanned_spotify = now
         if artist.apple_artist_id:
             t.last_scanned_apple = now
+        if settings.youtube_api_key:
+            t.last_scanned_youtube = now
 
     await audit.log(
         session,

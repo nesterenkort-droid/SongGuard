@@ -26,6 +26,12 @@ from app.services.scoring import normalize_label
 
 
 async def _setup_artist(session) -> tuple[Artist, int]:
+    from sqlalchemy import delete
+    # Clean up any existing records from manual verify runs
+    await session.execute(delete(Track).where(Track.apple_track_id == 1859638952))
+    await session.execute(delete(Artist).where(Artist.spotify_artist_id == "twxnyspotify"))
+    await session.flush()
+
     artist = Artist(name="TWXNY", spotify_artist_id="twxnyspotify", apple_artist_id="1718381786")
     session.add(artist)
     await session.flush()

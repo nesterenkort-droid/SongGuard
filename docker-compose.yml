@@ -58,6 +58,8 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     volumes:
       - appdata:/data
+      - ./app:/app/app
+      - ./tests:/app/tests
     depends_on:
       postgres:
         condition: service_healthy
