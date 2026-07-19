@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Находки — TrackGuard{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+  <h1 class="text-2xl font-bold">Находки</h1>
+  <form method="post" action="/findings/scan" class="flex items-end gap-2">
+    <div>
+      <label class="text-xs text-base-content/60">Запустить скан</label>
+      <select name="artist_id" class="select select-bordered select-sm" required>
+        {% for artist, count in artists %}
+        <option value="{{ artist.id }}">{{ artist.name }} ({{ count }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-sm btn-primary">🔍 Сканировать</button>
+  </form>
+</div>
+
+{% if request.query_params.get('scan') == 'queued' %}
+<div class="alert alert-info mb-4 text-sm">Скан поставлен в очередь. Обновите страницу через минуту.</div>
+{% endif %}
+
+<!-- Status tabs -->
+<div class="tabs tabs-boxed mb-4 w-fit">
+  {% for key, label in [('open','Новые'),('confirmed','Пиратки'),('tolerated','Разрешённые'),('dismissed','Ложные')] %}
+  <a class="tab {% if status == key %}tab-active{% endif %}" href="/findings?status={{ key }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% if rows %}
+<div class="flex flex-col gap-3">
+  {% for finding, cand, track, artist in rows %}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex gap-4">
+        <!-- Pirate cover -->
+        <div class="shrink-0">
+          {% if cand.thumb_url %}
+          <img src="{{ cand.thumb_url }}" alt="" class="w-20 h-20 rounded object-cover" referrerpolicy="no-referrer" />
+          {% else %}
+          <div class="w-20 h-20 rounded bg-base-300"></div>
+          {% endif %}
+        </div>
+
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="badge {% if cand.platform == 'spotify' %}badge-success{% elif cand.platform == 'itunes' %}badge-neutral{% else %}badge-error{% endif %} badge-sm">{{ cand.platform }}</span>
+            <span class="badge badge-sm
+              {% if finding.band == 'high' %}badge-error{% elif finding.band == 'mid' %}badge-warning{% else %}badge-ghost{% endif %}">
+              {{ finding.score }} / 100
+            </span>
+            <span class="badge badge-outline badge-sm">{{ status_labels.get(finding.status, finding.status) }}</span>
+          </div>
+
+          <div class="font-semibold mt-1 truncate">{{ cand.title }}</div>
+          <div class="text-sm text-base-content/70 truncate">
+            {% if cand.uploader %}{{ cand.uploader }} · {% endif %}
+            наш трек: «{{ track.title }}» ({{ artist.name }})
+          </div>
+          {% if cand.parsed_plabel or cand.parsed_provider %}
+          <div class="text-xs text-base-content/50 truncate">лейбл: {{ cand.parsed_plabel or cand.parsed_provider }}</div>
+          {% endif %}
+
+          <!-- Signal breakdown -->
+          <div class="flex gap-1 flex-wrap mt-2">
+            {% for s in finding.signals or [] %}
+            <span class="badge badge-sm badge-ghost" title="вес {{ s.weight }}">
+              {{ s.label }} <span class="opacity-60 ml-1">+{{ s.contribution }}</span>
+            </span>
+            {% endfor %}
+          </div>
+
+          <!-- Actions -->
+          <div class="flex gap-1 flex-wrap mt-3 items-center">
+            {% if cand.url %}<a href="{{ cand.url }}" target="_blank" rel="noopener" class="btn btn-xs btn-ghost">🌐 открыть</a>{% endif %}
+            <form method="post" action="/findings/{{ finding.id }}/action" class="inline">
+              <input type="hidden" name="action" value="confirm" />
+              <button class="btn btn-xs btn-error">✓ Пиратка</button>
+            </form>
+            <form method="post" action="/findings/{{ finding.id }}/action" class="inline">
+              <input type="hidden" name="action" value="dismiss" />
+              <button class="btn btn-xs btn-ghost">✗ Ложное</button>
+            </form>
+            <form method="post" action="/findings/{{ finding.id }}/action" class="inline">
+              <input type="hidden" name="action" value="tolerate" />
+              <button class="btn btn-xs btn-ghost">🕊 Разрешить</button>
+            </form>
+            {% if cand.uploader %}
+            <form method="post" action="/findings/{{ finding.id }}/whitelist" class="inline">
+              <input type="hidden" name="entry_type" value="channel_id" />
+              <button class="btn btn-xs btn-outline" title="Больше не флажить этот канал">＋ канал в белый список</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-base-content/60 py-12">
+  Здесь пока пусто. Запустите скан по артисту выше — найденные пиратки появятся тут.
+</div>
+{% endif %}
+{% endblock %}

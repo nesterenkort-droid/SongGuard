@@ -9,7 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth.deps import NotAuthenticated, NotAuthorized
 from app.config import settings
-from app.web.routes import admin, auth, catalog, health, pages
+from app.web.routes import admin, auth, catalog, findings, health, pages
 from app.web.templating import render
 
 app = FastAPI(title="TrackGuard", version=settings.app_version)
@@ -38,6 +38,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(pages.router)
 app.include_router(catalog.router)
+app.include_router(findings.router)
 app.include_router(admin.router)
 
 # Static assets.
