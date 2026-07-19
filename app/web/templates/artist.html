@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ artist.name }} — TrackGuard{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <div>
+    <a href="/catalog" class="text-sm link link-hover">← Каталог</a>
+    <h1 class="text-2xl font-bold">{{ artist.name }}</h1>
+  </div>
+  <div class="flex gap-1">
+    {% if artist.apple_artist_id %}<span class="badge">Apple {{ artist.apple_artist_id }}</span>{% endif %}
+    {% if artist.spotify_artist_id %}<span class="badge badge-success">Spotify</span>{% endif %}
+  </div>
+</div>
+
+{% if tracks %}
+<div class="overflow-x-auto">
+  <table class="table table-sm bg-base-100 rounded-lg">
+    <thead>
+      <tr>
+        <th>Обложка</th><th>Название</th><th>Дата</th><th>Длит.</th>
+        <th>ISRC</th><th>Аудио</th><th>Оригинал</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tracks %}
+      <tr>
+        <td>
+          {% if t.cover_path %}
+          <img src="/media/covers/{{ t.cover_path }}" alt="" class="w-12 h-12 rounded object-cover" />
+          {% else %}
+          <div class="w-12 h-12 rounded bg-base-300"></div>
+          {% endif %}
+        </td>
+        <td>
+          <div class="font-medium">{{ t.title }}</div>
+          <div class="flex gap-1 mt-1">
+            {% if t.is_variant %}<span class="badge badge-xs badge-warning">{{ t.variant_label }}</span>{% endif %}
+            {% if t.is_hot_pinned %}<span class="badge badge-xs badge-error">📌 горячий</span>{% endif %}
+          </div>
+        </td>
+        <td class="text-xs">{{ t.release_date or "—" }}</td>
+        <td class="text-xs">
+          {% if t.duration_ms %}{{ t.duration_ms // 60000 }}:{{ "%02d"|format((t.duration_ms // 1000) % 60) }}{% else %}—{% endif %}
+        </td>
+        <td class="text-xs font-mono">{{ t.isrc or "—" }}</td>
+        <td>
+          {% if t.audio_ref_status == "full" %}<span class="badge badge-xs badge-success">оригинал</span>
+          {% elif t.audio_ref_status == "preview" %}<span class="badge badge-xs">превью</span>
+          {% else %}<span class="badge badge-xs badge-ghost">нет</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/catalog/track/{{ t.id }}/upload" enctype="multipart/form-data"
+                class="flex items-center gap-1">
+            <input type="file" name="file" required
+                   class="file-input file-input-xs file-input-bordered w-36" />
+            <button class="btn btn-xs">↑</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/catalog/track/{{ t.id }}/pin">
+            <button class="btn btn-xs btn-ghost" title="Закрепить в «горячих»">
+              {% if t.is_hot_pinned %}📌{% else %}📍{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-xs text-base-content/50 mt-2">
+  «Оригинал» — загрузите исходный WAV/MP3 для точного аудио-сравнения (используется в M5).
+  Официальные версии (Slowed/Nightcore) помечены — они не считаются пиратством.
+</p>
+{% else %}
+<div class="text-center text-base-content/60 py-12">У артиста пока нет треков.</div>
+{% endif %}
+{% endblock %}

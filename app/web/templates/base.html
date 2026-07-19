@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}TrackGuard{% endblock %}</title>
+  <!-- M0/M1 skeleton uses CDN builds for instant polish; a self-hosted Tailwind build lands later. -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+</head>
+<body class="min-h-screen bg-base-200">
+  <div class="navbar bg-base-100 shadow-sm">
+    <div class="flex-1">
+      <a class="btn btn-ghost text-xl" href="/">🛡️ TrackGuard</a>
+      {% if user %}
+      <a class="btn btn-ghost btn-sm" href="/catalog">Каталог</a>
+      {% if user.is_admin %}<a class="btn btn-ghost btn-sm" href="/admin">Админка</a>{% endif %}
+      {% endif %}
+    </div>
+    <div class="flex-none gap-2">
+      <span class="badge badge-outline">v{{ settings.app_version }}</span>
+      {% if user %}
+        <span class="text-sm opacity-70">{{ user.display_name }}{% if user.is_admin %} · админ{% endif %}</span>
+        <a class="btn btn-ghost btn-sm" href="/logout">Выйти</a>
+      {% else %}
+        <a class="btn btn-primary btn-sm" href="/login">Войти</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <main class="container mx-auto max-w-5xl p-4 md:p-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer footer-center p-4 text-base-content/60 text-xs">
+    <aside>
+      <p>TrackGuard — мониторинг пиратства треков ·
+        аудио-фингерпринтинг на базе
+        <a class="link" href="https://github.com/JorenSix/Panako" target="_blank" rel="noopener">Panako</a> (AGPL)</p>
+    </aside>
+  </footer>
+</body>
+</html>

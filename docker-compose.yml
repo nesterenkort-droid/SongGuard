@@ -1,0 +1,106 @@
+name: trackguard
+
+# Shared build/config for every Python service. `image:` is pinned so the image
+# is built once and reused across services instead of rebuilt per service.
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: trackguard-app:latest
+  env_file: .env
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trackguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trackguard}
+      POSTGRES_DB: ${POSTGRES_DB:-trackguard}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trackguard}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: apply migrations, then exit. Everything else waits on it.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # One-shot: idempotent baseline data.
+  seed:
+    <<: *app
+    restart: "no"
+    command: python -m scripts.seed
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    <<: *app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - appdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: arq app.worker.main.WorkerSettings
+    volumes:
+      - appdata:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  bot:
+    <<: *app
+    command: python -m app.bot.main
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      # Production: set NGINX_HTTP_PORT=80. Locally it defaults to 8080 via .env.
+      - "${NGINX_HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  pgdata:
+  appdata:

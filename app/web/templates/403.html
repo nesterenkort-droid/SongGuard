@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Нет доступа — TrackGuard{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto">
+  <div class="alert alert-error">
+    <span>Недостаточно прав. Эта страница доступна только администраторам.</span>
+  </div>
+  <a class="btn btn-ghost mt-4" href="/">На главную</a>
+</div>
+{% endblock %}

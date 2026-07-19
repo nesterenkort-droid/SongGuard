@@ -1,0 +1,9 @@
+{# Self-repolling element. Each swap returns a fresh copy which re-triggers on load. #}
+<div id="login-poll"
+     hx-get="/login/poll?nonce={{ nonce }}"
+     hx-trigger="load delay:2s"
+     hx-swap="outerHTML"
+     class="mt-3 flex items-center gap-2 text-sm text-base-content/70">
+  <span class="loading loading-dots loading-sm"></span>
+  Ожидаем подтверждения…
+</div>

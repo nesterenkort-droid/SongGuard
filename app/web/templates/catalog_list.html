@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Каталог — TrackGuard{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Каталог</h1>
+
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body">
+    <h2 class="card-title text-base">Импорт артиста</h2>
+    <p class="text-sm text-base-content/70">
+      Вставьте ссылку на артиста в Apple Music или Spotify. Система затянет весь
+      каталог: названия, даты, длительности, обложки (Spotify — ещё и ISRC).
+    </p>
+    <form method="post" action="/catalog/import" class="flex flex-col sm:flex-row gap-2 mt-2">
+      <input name="ref" required
+             placeholder="https://music.apple.com/us/artist/.../1718381786"
+             class="input input-bordered flex-1" />
+      <button class="btn btn-primary">Импортировать</button>
+    </form>
+    {% if error %}
+    <div class="alert alert-error mt-2 text-sm">{{ error }}</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if artists %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for artist, count in artists %}
+  <a href="/catalog/artist/{{ artist.id }}" class="card bg-base-100 shadow-sm hover:shadow-md transition">
+    <div class="card-body">
+      <h3 class="card-title text-base">{{ artist.name }}</h3>
+      <p class="text-sm text-base-content/60">{{ count }} трек(ов)</p>
+      <div class="flex gap-1 flex-wrap">
+        {% if artist.apple_artist_id %}<span class="badge badge-sm">Apple</span>{% endif %}
+        {% if artist.spotify_artist_id %}<span class="badge badge-sm badge-success">Spotify</span>{% endif %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-base-content/60 py-12">
+  Каталог пуст. Импортируйте первого артиста по ссылке выше.
+</div>
+{% endif %}
+{% endblock %}

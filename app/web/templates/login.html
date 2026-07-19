@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Вход — TrackGuard{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+  <div class="card bg-base-100 shadow-md">
+    <div class="card-body">
+      <h1 class="card-title">Вход в TrackGuard</h1>
+      <p class="text-sm text-base-content/70">
+        Вход выполняется через Telegram — без паролей. Нажмите кнопку, откройте бота
+        и подтвердите. Регистрация новых пользователей — только по приглашению.
+      </p>
+      <button class="btn btn-primary mt-2"
+              hx-post="/login/start"
+              hx-target="#login-area"
+              hx-swap="innerHTML">
+        Войти через Telegram
+      </button>
+      <div id="login-area" class="mt-4"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

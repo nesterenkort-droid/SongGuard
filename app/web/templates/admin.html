@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Админка — TrackGuard{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Админка</h1>
+
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body">
+    <h2 class="card-title text-base">Приглашения</h2>
+    <form method="post" action="/admin/invite" class="flex flex-col sm:flex-row gap-2">
+      <input name="note" placeholder="Для кого (необязательно)" class="input input-bordered flex-1" />
+      <button class="btn btn-primary">Создать приглашение</button>
+    </form>
+
+    <div class="overflow-x-auto mt-4">
+      <table class="table table-sm">
+        <thead><tr><th>Ссылка</th><th>Заметка</th><th>Статус</th><th></th></tr></thead>
+        <tbody>
+          {% for row in invite_rows %}
+          <tr>
+            <td class="font-mono text-xs break-all">{{ row.url }}</td>
+            <td class="text-sm">{{ row.inv.note or "—" }}</td>
+            <td>
+              {% if row.status == "открыто" %}<span class="badge badge-success badge-sm">{{ row.status }}</span>
+              {% elif row.status == "использовано" %}<span class="badge badge-ghost badge-sm">{{ row.status }}</span>
+              {% else %}<span class="badge badge-warning badge-sm">{{ row.status }}</span>{% endif %}
+            </td>
+            <td>
+              {% if row.status == "открыто" %}
+              <form method="post" action="/admin/invite/{{ row.inv.id }}/revoke">
+                <button class="btn btn-xs btn-ghost text-error">отозвать</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-base-content/50">Приглашений пока нет.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-base">Пользователи</h2>
+      <table class="table table-sm">
+        <thead><tr><th>Имя</th><th>TG ID</th><th>Роль</th></tr></thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.display_name }}</td>
+            <td class="font-mono text-xs">{{ u.tg_user_id }}</td>
+            <td>{% if u.is_admin %}<span class="badge badge-primary badge-sm">админ</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title text-base">Последние действия (аудит)</h2>
+      <ul class="text-xs space-y-1">
+        {% for e in events %}
+        <li class="border-b border-base-200 pb-1">
+          <span class="badge badge-ghost badge-xs">{{ e.action }}</span>
+          {{ e.summary }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

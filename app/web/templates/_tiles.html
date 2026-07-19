@@ -1,0 +1,33 @@
+{# Renders the overall banner + one card per component. Shared by the full page and the HTMX poll. #}
+{% set overall_map = {
+  "ok": ("alert-success", "Всё работает"),
+  "degraded": ("alert-warning", "Работает с оговорками"),
+  "down": ("alert-error", "Есть критическая проблема"),
+} %}
+{% set cls, label = overall_map.get(overall, ("alert-info", overall)) %}
+
+<div class="alert {{ cls }} mb-4">
+  <span class="font-semibold">{{ label }}</span>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  {% for c in components %}
+  {% set badge = {"ok": "badge-success", "warn": "badge-warning", "down": "badge-error"}.get(c.status, "badge-ghost") %}
+  {% set dot = {"ok": "bg-success", "warn": "bg-warning", "down": "bg-error"}.get(c.status, "bg-base-300") %}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center justify-between">
+        <h2 class="card-title text-base">
+          <span class="inline-block w-3 h-3 rounded-full {{ dot }}"></span>
+          {{ c.label }}
+        </h2>
+        <span class="badge {{ badge }}">{{ c.status }}</span>
+      </div>
+      <p class="text-sm text-base-content/70">{{ c.detail }}</p>
+      {% if c.critical %}
+      <span class="text-[10px] uppercase tracking-wide text-base-content/40">критический компонент</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>

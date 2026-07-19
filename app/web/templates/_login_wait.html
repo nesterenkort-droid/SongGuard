@@ -1,0 +1,33 @@
+{# Shown after the user asks to log in: the deep-link + a live poller. #}
+<div>
+  {% if deeplink %}
+    <a class="btn btn-primary btn-block" href="{{ deeplink }}" target="_blank" rel="noopener">
+      Открыть Telegram и подтвердить
+    </a>
+    <p class="text-xs text-base-content/60 mt-2">
+      После подтверждения в Telegram эта страница обновится автоматически.
+    </p>
+  {% else %}
+    <div class="alert alert-warning text-sm">
+      Бот ещё не настроен (нет <code>TELEGRAM_BOT_USERNAME</code>). Задайте username бота,
+      чтобы включить вход через Telegram.
+    </div>
+  {% endif %}
+
+  {% include "_login_pending.html" %}
+
+  {% if not settings.is_production %}
+  <form hx-post="/dev/tg-confirm" hx-swap="none"
+        class="mt-4 p-3 border border-dashed border-base-300 rounded text-xs space-y-2">
+    <div class="opacity-60">Dev-режим: симуляция подтверждения ботом</div>
+    <input type="hidden" name="payload" value="{{ mode }}-{{ nonce }}">
+    <label class="block">tg_user_id
+      <input name="tg_user_id" value="1001" class="input input-bordered input-xs w-full">
+    </label>
+    <label class="block">Имя
+      <input name="display_name" value="Dev User" class="input input-bordered input-xs w-full">
+    </label>
+    <button class="btn btn-xs btn-outline">Dev-подтвердить</button>
+  </form>
+  {% endif %}
+</div>

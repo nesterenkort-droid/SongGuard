@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Приглашение — TrackGuard{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+  <div class="card bg-base-100 shadow-md">
+    <div class="card-body">
+      <h1 class="card-title">Приглашение в TrackGuard</h1>
+      {% if valid %}
+        <p class="text-sm text-base-content/70">
+          Приглашение действительно. Подтвердите вход через Telegram, чтобы
+          зарегистрироваться.
+        </p>
+        <button class="btn btn-primary mt-2"
+                hx-post="/join/{{ token }}/start"
+                hx-target="#login-area"
+                hx-swap="innerHTML">
+          Присоединиться через Telegram
+        </button>
+        <div id="login-area" class="mt-4"></div>
+      {% else %}
+        <div class="alert alert-error">
+          Приглашение недействительно или уже использовано. Запросите новое у администратора.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
