@@ -40,6 +40,20 @@ from app.models.detection import (
     PlatformCandidate,
     WhitelistEntry,
 )
+from app.models.notify import (
+    KIND_ADMIN_ALERT,
+    KIND_DIGEST,
+    KIND_FINDING,
+    MAX_OUTBOX_ATTEMPTS,
+    MODE_DAILY,
+    MODE_INSTANT,
+    MODE_WEEKLY,
+    OUTBOX_FAILED,
+    OUTBOX_PENDING,
+    OUTBOX_SENT,
+    NotificationOutbox,
+    Subscription,
+)
 from app.models.system import SystemInfo
 from app.models.track import (
     AUDIO_REF_FULL,
@@ -98,4 +112,17 @@ __all__ = [
     "PE_SPOTIFY_LABEL",
     "PE_APPLE_LABEL",
     "PE_DISTRIBUTOR",
+    # Notifications (M3)
+    "Subscription",
+    "NotificationOutbox",
+    "MODE_INSTANT",
+    "MODE_DAILY",
+    "MODE_WEEKLY",
+    "OUTBOX_PENDING",
+    "OUTBOX_SENT",
+    "OUTBOX_FAILED",
+    "KIND_FINDING",
+    "KIND_DIGEST",
+    "KIND_ADMIN_ALERT",
+    "MAX_OUTBOX_ATTEMPTS",
 ]

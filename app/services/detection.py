@@ -49,7 +49,7 @@ from app.models import (
 )
 from app.scanners import itunes_scan, spotify_scan
 from app.scanners.base import RawCandidate
-from app.services import audit, images
+from app.services import audit, images, notify
 from app.services.normalize import detect_variant, normalize_title
 from app.services.scoring import (
     BAND_LOW,
@@ -239,6 +239,7 @@ def _best_results(
 
 async def _persist_finding(
     session: AsyncSession,
+    artist: Artist,
     cand: PlatformCandidate,
     track: Track,
     result: ScoreResult,
@@ -249,6 +250,7 @@ async def _persist_finding(
             Finding.candidate_id == cand.id, Finding.track_id == track.id
         )
     )
+    is_new = finding is None
     if finding is None:
         finding = Finding(candidate_id=cand.id, track_id=track.id, status=STATUS_DETECTED)
         session.add(finding)
@@ -263,6 +265,9 @@ async def _persist_finding(
     if finding.status not in RESOLVED_STATUSES:
         finding.status = STATUS_DETECTED
     await session.flush()
+
+    if is_new:
+        await notify.enqueue_finding_notifications(session, artist, finding)
 
 
 async def ingest_candidates(
@@ -317,12 +322,29 @@ async def ingest_candidates(
                     summary.high += 1
                 elif result.band == "mid":
                     summary.mid += 1
-                await _persist_finding(session, cand, track, result, summary)
+                await _persist_finding(session, artist, cand, track, result, summary)
     finally:
         if client is not None:
             await client.aclose()
 
     return summary
+
+
+async def get_finding_context(
+    session: AsyncSession, finding_id: int
+) -> tuple[Finding, PlatformCandidate, Track, Artist] | None:
+    """Load a finding with its candidate/track/artist — the join both the dashboard
+    and the bot card renderer need."""
+    row = (
+        await session.execute(
+            select(Finding, PlatformCandidate, Track, Artist)
+            .join(PlatformCandidate, Finding.candidate_id == PlatformCandidate.id)
+            .join(Track, Finding.track_id == Track.id)
+            .join(Artist, Track.primary_artist_id == Artist.id)
+            .where(Finding.id == finding_id)
+        )
+    ).first()
+    return tuple(row) if row else None
 
 
 # --- Live scan ----------------------------------------------------------------

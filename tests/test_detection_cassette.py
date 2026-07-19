@@ -25,7 +25,7 @@ from app.services.normalize import normalize_title
 from app.services.scoring import normalize_label
 
 
-async def _setup_artist(session) -> Artist:
+async def _setup_artist(session) -> tuple[Artist, int]:
     artist = Artist(name="TWXNY", spotify_artist_id="twxnyspotify", apple_artist_id="1718381786")
     session.add(artist)
     await session.flush()
@@ -50,7 +50,7 @@ async def _setup_artist(session) -> Artist:
         )
     )
     await session.flush()
-    return artist
+    return artist, track.id
 
 
 def _pirate_raw() -> RawCandidate:
@@ -71,7 +71,7 @@ def _pirate_raw() -> RawCandidate:
 @pytest.mark.asyncio
 async def test_golden_pirate_detected_and_whitelist_suppresses(db_session):
     session = db_session
-    artist = await _setup_artist(session)
+    artist, track_id = await _setup_artist(session)
 
     # --- Scan ingests the pirate → a high-band finding is created ---
     summary = await detection.ingest_candidates(
@@ -81,7 +81,10 @@ async def test_golden_pirate_detected_and_whitelist_suppresses(db_session):
     assert summary.findings_created == 1
     assert summary.high == 1
 
-    finding = await session.scalar(select(Finding))
+    # Scope every query to this test's own track: the dev DB is shared with manual
+    # verify_*.py runs, which commit real rows outside this test's transaction.
+    findings_stmt = select(Finding).where(Finding.track_id == track_id)
+    finding = await session.scalar(findings_stmt)
     assert finding is not None
     assert finding.band == "high"
     assert finding.score >= 70
@@ -100,7 +103,9 @@ async def test_golden_pirate_detected_and_whitelist_suppresses(db_session):
         session, artist, [_pirate_raw()], download_covers=False
     )
     assert summary2.findings_created == 0
-    total = await session.scalar(select(func.count(Finding.id)))
+    total = await session.scalar(
+        select(func.count(Finding.id)).where(Finding.track_id == track_id)
+    )
     assert total == 1  # still just the one, still dismissed
-    refreshed = await session.scalar(select(Finding))
+    refreshed = await session.scalar(findings_stmt)
     assert refreshed.status == STATUS_DISMISSED
