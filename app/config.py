@@ -42,7 +42,10 @@ class Settings(BaseSettings):
 
     # --- YouTube ---
     youtube_api_key: str | None = None
-    youtube_search_quota_daily: int = 90
+    # Google's real cap is ~10 000 units/day per key (search costs 100 units each).
+    # With 2 rotated keys that's ~200 searches/day of real headroom; 180 leaves a
+    # margin per key while using both.
+    youtube_search_quota_daily: int = 180
     youtube_min_interval_seconds: float = 1.0
 
     # --- AI Judge / Anthropic ---

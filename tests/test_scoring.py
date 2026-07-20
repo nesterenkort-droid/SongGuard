@@ -7,6 +7,7 @@ from app.services.scoring import (
     DetectionContext,
     TrackFacts,
     duration_stretch,
+    humanize_stretch,
     normalize_label,
     score_candidate,
     whitelist_gate,
@@ -103,6 +104,55 @@ def test_fuzzy_title_below_exact():
     keys = {s.key for s in result.signals}
     assert "title_fuzzy" in keys
     assert "title_exact" not in keys
+
+
+def test_humanize_stretch_wording():
+    assert humanize_stretch(1.25) == " (замедлено на 25%)"
+    assert humanize_stretch(0.8) == " (ускорено на 20%)"
+    assert humanize_stretch(1.0) == " (тот же темп)"
+    assert humanize_stretch(None) == ""
+
+
+def test_audio_match_signal_uses_percentage_wording():
+    result = score_candidate(
+        _pirate(), ORIGINAL, _ctx(), audio_match={"matched": True, "true_stretch": 1.25}
+    )
+    sig = next(s for s in result.signals if s.key == "audio_match")
+    assert "замедлено на 25%" in sig.label
+
+
+def test_unlicensed_weak_signal_fires_on_youtube_reupload():
+    cand = _pirate(
+        platform="youtube", licensed_content=False,
+        parsed_provider=None, parsed_plabel=None,
+    )
+    result = score_candidate(cand, ORIGINAL, _ctx())
+    assert "unlicensed" in {s.key for s in result.signals}
+
+
+def test_unlicensed_signal_absent_when_licensed_true():
+    cand = _pirate(
+        platform="youtube", licensed_content=True,
+        parsed_provider=None, parsed_plabel=None,
+    )
+    result = score_candidate(cand, ORIGINAL, _ctx())
+    assert "unlicensed" not in {s.key for s in result.signals}
+
+
+def test_unlicensed_signal_absent_when_provider_known():
+    # licensed_content=False but a distributor IS named -> not an unmarked reupload.
+    cand = _pirate(platform="youtube", licensed_content=False)
+    result = score_candidate(cand, ORIGINAL, _ctx())
+    assert "unlicensed" not in {s.key for s in result.signals}
+
+
+def test_unlicensed_signal_absent_on_non_youtube():
+    cand = _pirate(
+        platform="spotify", licensed_content=False,
+        parsed_provider=None, parsed_plabel=None,
+    )
+    result = score_candidate(cand, ORIGINAL, _ctx())
+    assert "unlicensed" not in {s.key for s in result.signals}
 
 
 def test_unrelated_track_scores_low():

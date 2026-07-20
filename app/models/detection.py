@@ -118,6 +118,11 @@ class PlatformCandidate(Base):
     cover_phash: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cover_dhash: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # YouTube's `contentDetails.licensedContent` — a weak signal, NOT a Content ID
+    # claim status (that's not exposed by the public API at all). NULL for
+    # non-YouTube platforms or when not yet fetched.
+    licensed_content: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
     raw_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     first_seen: Mapped[datetime] = mapped_column(

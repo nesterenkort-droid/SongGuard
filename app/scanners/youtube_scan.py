@@ -166,6 +166,7 @@ async def _fetch_video_details(
                 "duration_ms": duration_ms,
                 "published_at": published_at,
                 "thumb_url": thumb_url,
+                "licensed_content": content_details.get("licensedContent"),
                 "raw_json": item,
             }
         return details
@@ -227,6 +228,7 @@ async def search_tracks(query: str, limit: int = 10) -> list[RawCandidate]:
                         duration_ms=det["duration_ms"],
                         thumb_url=det["thumb_url"],
                         cover_url=det["thumb_url"],
+                        licensed_content=det.get("licensed_content"),
                         raw_json=det["raw_json"],
                     )
                 )
@@ -303,6 +305,7 @@ async def scan_playlist_items(
                         duration_ms=det["duration_ms"],
                         thumb_url=det["thumb_url"],
                         cover_url=det["thumb_url"],
+                        licensed_content=det.get("licensed_content"),
                         raw_json=det["raw_json"],
                     )
                 )

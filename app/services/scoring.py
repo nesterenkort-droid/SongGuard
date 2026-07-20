@@ -33,6 +33,7 @@ W_PIRATE_LABEL = 25  # watchlist match or `\d+ Records DK` autolabel
 W_COVER_STRONG = 25  # pHash hamming <= 8
 W_COVER_WEAK = 15  # pHash hamming <= 14
 W_DATE_DELTA = 5
+W_UNLICENSED = 8  # weak: YouTube video not tracked by any partner + no distributor info
 
 # --- Bands ---
 BAND_HIGH = "high"
@@ -69,6 +70,10 @@ class CandidateFacts:
     cover_dhash: str | None = None
     is_variant: bool = False
     variant_label: str | None = None
+    # YouTube only: contentDetails.licensedContent. NOT a Content ID claim status
+    # (that's not exposed by the public API) — just "is this tracked by YouTube's
+    # partner system at all". None for non-YouTube or when unknown.
+    licensed_content: bool | None = None
 
 
 @dataclass
@@ -148,6 +153,20 @@ def title_similarity(a: str, b: str) -> float:
     if a == b:
         return 1.0
     return SequenceMatcher(None, a, b).ratio()
+
+
+def humanize_stretch(stretch: float | None) -> str:
+    """" (замедлено на 25%)" / " (ускорено на 20%)" / "" — plain-language version
+    of a Panako speed-ratio, same convention as the duration-ratio signal below
+    (ratio > 1 = candidate is slower/longer than our original)."""
+    if stretch is None:
+        return ""
+    pct = round((stretch - 1) * 100)
+    if pct > 0:
+        return f" (замедлено на {pct}%)"
+    if pct < 0:
+        return f" (ускорено на {-pct}%)"
+    return " (тот же темп)"
 
 
 def duration_stretch(cand_ms: int | None, orig_ms: int | None) -> tuple[float | None, float | None]:
@@ -282,6 +301,27 @@ def score_candidate(
     if label_sig:
         signals.append(label_sig)
 
+    # --- Weak signal: YouTube video outside any partner tracking, no distributor
+    # info either — looks like an informal reupload, not an official delivery.
+    # `licensed_content=True` is NOT treated as a legitimacy signal in the other
+    # direction: pirate uploads routed through DistroKid-style distributors are
+    # also licensed_content=True (the distributor's own Content ID claim), so it
+    # doesn't discriminate — only the *absence* of any tracking is informative.
+    title_matched = cand.normalized_title == track.normalized_title or sim >= FUZZY_CUTOFF
+    if (
+        cand.platform == "youtube"
+        and cand.licensed_content is False
+        and title_matched
+        and not cand.parsed_provider
+        and not cand.parsed_plabel
+    ):
+        add(
+            "unlicensed",
+            "Видео вне партнёрской системы YouTube и без указания дистрибьютора",
+            False,
+            W_UNLICENSED,
+        )
+
     # --- Cover pHash ---
     if cand.cover_phash and track.cover_phash:
         try:
@@ -302,10 +342,7 @@ def score_candidate(
     if audio_match is not None:
         if audio_match.get("matched"):
             stretch = audio_match.get("true_stretch")
-            if stretch is not None:
-                human = f"Звук совпадает по отпечатку Panako (скорость {stretch:.3f}x)"
-            else:
-                human = "Звук совпадает по отпечатку Panako"
+            human = f"Звук совпадает по отпечатку{humanize_stretch(stretch)}"
             add("audio_match", human, stretch, 40)
         else:
             add("audio_no_match", "Звук не совпадает с оригиналом", None, -50)

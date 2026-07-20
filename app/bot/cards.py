@@ -71,16 +71,22 @@ def build_finding_text(
 ) -> str:
     """Human-readable RU card body: what we found, against what, and why (PLAN.md §9)."""
     emoji = STATUS_EMOJI.get(finding.status, "🆕")
+    platform_ru = {
+        "spotify": "Spotify", "itunes": "Apple Music", "youtube": "YouTube",
+    }.get(cand.platform, cand.platform)
     lines = [
         f"{emoji} <b>{_esc(cand.title)}</b>",
-        f"площадка: {cand.platform}" + (f" · {_esc(cand.uploader)}" if cand.uploader else ""),
+        f"площадка: {platform_ru}" + (f" · {_esc(cand.uploader)}" if cand.uploader else ""),
         f"наш трек: «{_esc(track.title)}» ({_esc(artist_name)})",
     ]
     if cand.parsed_plabel or cand.parsed_provider:
         lines.append(f"лейбл/дистрибьютор: {_esc(cand.parsed_plabel or cand.parsed_provider)}")
     if cand.published_at:
         lines.append(f"дата: {cand.published_at.date().isoformat()}")
-    lines.append(f"\nскор: <b>{finding.score}</b> ({finding.band})")
+    band_ru = {
+        "high": "высокая уверенность", "mid": "требует проверки", "low": "низкая уверенность",
+    }.get(finding.band, finding.band)
+    lines.append(f"\nскор: <b>{finding.score}</b> ({band_ru})")
     for s in finding.signals or []:
         lines.append(f"• {s['label']} (+{s['contribution']})")
     return "\n".join(lines)

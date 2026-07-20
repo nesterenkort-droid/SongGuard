@@ -30,7 +30,7 @@ def test_card_text_has_key_facts():
     finding, cand, track = _finding()
     text = build_finding_text(finding, cand, track, "TWXNY")
     assert "HEAVENLY JUMPSTYLE (Slowed)" in text
-    assert "spotify" in text
+    assert "Spotify" in text
     assert "TWXNY" in text
     assert "13207436 Records DK" in text
     assert "150" in text

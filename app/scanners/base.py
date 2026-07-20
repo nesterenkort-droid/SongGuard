@@ -25,4 +25,7 @@ class RawCandidate:
     duration_ms: int | None = None
     thumb_url: str | None = None
     cover_url: str | None = None
+    # YouTube only: contentDetails.licensedContent (weak provenance signal, NOT a
+    # Content ID claim status — that's not exposed by the public API).
+    licensed_content: bool | None = None
     raw_json: dict = field(default_factory=dict)

@@ -155,6 +155,7 @@ def _candidate_facts(cand: PlatformCandidate) -> CandidateFacts:
         cover_dhash=cand.cover_dhash,
         is_variant=is_variant,
         variant_label=variant_label,
+        licensed_content=cand.licensed_content,
     )
 
 
@@ -193,6 +194,8 @@ async def upsert_candidate(session: AsyncSession, raw: RawCandidate) -> Platform
     cand.published_at = _as_dt(raw.published_at) or cand.published_at
     cand.duration_ms = raw.duration_ms or cand.duration_ms
     cand.thumb_url = raw.thumb_url or cand.thumb_url
+    if raw.licensed_content is not None:
+        cand.licensed_content = raw.licensed_content
     if raw.raw_json:
         cand.raw_json = raw.raw_json
     cand.last_seen = datetime.now(UTC)

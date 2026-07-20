@@ -108,10 +108,14 @@
 
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
-            <span class="badge {% if cand.platform == 'spotify' %}badge-success{% elif cand.platform == 'itunes' %}badge-neutral{% else %}badge-error{% endif %} badge-sm">{{ cand.platform }}</span>
+            <span class="badge {% if cand.platform == 'spotify' %}badge-success{% elif cand.platform == 'itunes' %}badge-neutral{% else %}badge-error{% endif %} badge-sm">
+              {% if cand.platform == 'spotify' %}Spotify{% elif cand.platform == 'itunes' %}Apple Music{% elif cand.platform == 'youtube' %}YouTube{% else %}{{ cand.platform }}{% endif %}
+            </span>
             <span class="badge badge-sm
-              {% if finding.band == 'high' %}badge-error{% elif finding.band == 'mid' %}badge-warning{% else %}badge-ghost{% endif %}">
-              {{ finding.score }} / 100
+              {% if finding.band == 'high' %}badge-error{% elif finding.band == 'mid' %}badge-warning{% else %}badge-ghost{% endif %}"
+              title="скор {{ finding.score }} — сумма веса всех сигналов ниже, без верхнего предела">
+              {% if finding.band == 'high' %}высокая уверенность{% elif finding.band == 'mid' %}требует проверки{% else %}низкая уверенность{% endif %}
+              ({{ finding.score }})
             </span>
             <span class="badge badge-outline badge-sm">{{ status_labels.get(finding.status, finding.status) }}</span>
           </div>
@@ -123,6 +127,26 @@
           </div>
           {% if cand.parsed_plabel or cand.parsed_provider %}
           <div class="text-xs text-base-content/50 truncate">лейбл: {{ cand.parsed_plabel or cand.parsed_provider }}</div>
+          {% endif %}
+
+          {% if finding.audio_match %}
+          <div class="mt-2 text-xs border border-base-300 bg-base-200/50 rounded p-2 flex gap-2 items-start">
+            <span class="text-base">🎵</span>
+            <div>
+              <span class="font-semibold text-base-content/85">Сверено по звуку (Panako):</span>
+              {% if finding.audio_match.matched %}
+                <span class="text-error font-bold">звук совпадает с оригиналом</span>
+                {% if finding.audio_match.true_stretch %}
+                  {% set pct = ((finding.audio_match.true_stretch - 1) * 100) | round | int %}
+                  <span class="text-base-content/60">
+                    ({% if pct > 0 %}замедлено на {{ pct }}%{% elif pct < 0 %}ускорено на {{ -pct }}%{% else %}тот же темп{% endif %})
+                  </span>
+                {% endif %}
+              {% else %}
+                <span class="text-success font-bold">звук НЕ совпадает с оригиналом</span>
+              {% endif %}
+            </div>
+          </div>
           {% endif %}
 
           {% if finding.llm %}

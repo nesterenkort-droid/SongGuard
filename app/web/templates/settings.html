@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Настройки — TrackGuard{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-1">Настройки детекции</h1>
+<p class="text-sm text-base-content/60 mb-6">
+  Эти списки действуют сразу для всего каталога — не нужно повторять для каждого артиста.
+</p>
+
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-base">Наши лейблы и дистрибьюторы</h2>
+    <p class="text-xs text-base-content/60 mb-2">
+      Впишите названия, под которыми ВАШИ треки легально выходят (например «0to8»,
+      «DistroKid», если это ваш дистрибьютор). Всё, что найдётся с ДРУГИМ лейблом/
+      дистрибьютором в описании — получает штраф как подозрительное. Без этого
+      списка сигнал «чужой лейбл» вообще не работает.
+    </p>
+    <form method="post" action="/settings/whitelist" class="flex gap-2 items-end flex-wrap mb-3">
+      <input type="hidden" name="entry_type" value="own_label" />
+      <div>
+        <label class="text-xs text-base-content/60 block">Название лейбла/дистрибьютора</label>
+        <input name="value" required placeholder="0to8" class="input input-bordered input-sm" />
+      </div>
+      <div>
+        <label class="text-xs text-base-content/60 block">Заметка (необязательно)</label>
+        <input name="note" placeholder="основной лейбл" class="input input-bordered input-sm" />
+      </div>
+      <button class="btn btn-sm btn-primary">Добавить</button>
+    </form>
+    {% if own_labels %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead><tr><th>Название</th><th>Заметка</th><th></th></tr></thead>
+        <tbody>
+          {% for e in own_labels %}
+          <tr>
+            <td class="font-medium">{{ e.value }}</td>
+            <td class="text-base-content/60">{{ e.note or "—" }}</td>
+            <td>
+              <form method="post" action="/settings/whitelist/{{ e.id }}/delete">
+                <button class="btn btn-xs btn-ghost text-error">✕ удалить</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-base-content/50">Пока пусто — детекция не будет отличать «чужой» лейбл от вашего.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-4">
+    <h2 class="card-title text-base">Разрешённые YouTube-каналы</h2>
+    <p class="text-xs text-base-content/60 mb-2">
+      Каналы, которым вы разрешили публиковать ваши треки (например, официальные
+      каналы дистрибьютора или доверенные партнёры). Совпадение идёт по имени
+      канала, как оно показано на видео. В заметке можно указать, какому лейблу
+      принадлежит канал.
+    </p>
+    <form method="post" action="/settings/whitelist" class="flex gap-2 items-end flex-wrap mb-3">
+      <input type="hidden" name="entry_type" value="channel_id" />
+      <div>
+        <label class="text-xs text-base-content/60 block">Имя канала на YouTube</label>
+        <input name="value" required placeholder="TWXNY - Topic" class="input input-bordered input-sm" />
+      </div>
+      <div>
+        <label class="text-xs text-base-content/60 block">Заметка (необязательно)</label>
+        <input name="note" placeholder="канал лейбла 0to8" class="input input-bordered input-sm" />
+      </div>
+      <button class="btn btn-sm btn-primary">Добавить</button>
+    </form>
+    {% if channels %}
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead><tr><th>Канал</th><th>Заметка</th><th></th></tr></thead>
+        <tbody>
+          {% for e in channels %}
+          <tr>
+            <td class="font-medium">{{ e.value }}</td>
+            <td class="text-base-content/60">{{ e.note or "—" }}</td>
+            <td>
+              <form method="post" action="/settings/whitelist/{{ e.id }}/delete">
+                <button class="btn btn-xs btn-ghost text-error">✕ удалить</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-base-content/50">
+      Пока пусто. Каналы также можно добавлять прямо из находки кнопкой
+      «＋ канал в белый список».
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
