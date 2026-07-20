@@ -146,7 +146,9 @@ async def toggle_pin(
         summary=f"{'Закреплён' if track.is_hot_pinned else 'Откреплён'} трек «{track.title}»",
     )
     await session.commit()
-    return RedirectResponse(f"/catalog/artist/{track.primary_artist_id}", status_code=303)
+    return RedirectResponse(
+        f"/catalog/artist/{track.primary_artist_id}#track-{track.id}", status_code=303
+    )
 
 
 @router.post("/track/{track_id}/mute")
@@ -170,7 +172,9 @@ async def toggle_mute(
         summary=f"{'Заглушён' if track.is_muted else 'Снята заглушка'} трек «{track.title}»",
     )
     await session.commit()
-    return RedirectResponse(f"/catalog/artist/{track.primary_artist_id}", status_code=303)
+    return RedirectResponse(
+        f"/catalog/artist/{track.primary_artist_id}#track-{track.id}", status_code=303
+    )
 
 
 @router.post("/artist/{artist_id}/mute-variants")
@@ -246,4 +250,6 @@ async def upload_original(
         data={"filename": filename, "size": len(content), "panako_indexed": panako_ok},
     )
     await session.commit()
-    return RedirectResponse(f"/catalog/artist/{track.primary_artist_id}", status_code=303)
+    return RedirectResponse(
+        f"/catalog/artist/{track.primary_artist_id}#track-{track.id}", status_code=303
+    )

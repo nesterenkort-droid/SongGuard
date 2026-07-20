@@ -9,7 +9,7 @@ from datetime import date
 
 import httpx
 
-from app.importers.itunes import LOOKUP_URL, _upscale
+from app.importers.itunes import LOOKUP_URL, _upscale, itunes_get
 from app.scanners.base import RawCandidate
 
 PLATFORM = "itunes"
@@ -74,8 +74,7 @@ async def scan_artist_page(
     """Tier 0: diff the artist's Apple discography against our known Apple track ids."""
     params = {"id": apple_artist_id, "entity": "song", "limit": limit, "country": country}
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(LOOKUP_URL, params=params)
-        resp.raise_for_status()
+        resp = await itunes_get(client, LOOKUP_URL, params)
         data = resp.json()
     return parse_scan(data, known_apple_ids)
 
@@ -86,7 +85,6 @@ async def search_tracks(
     """Tier 1: term search (rotate markets at the call site for regional releases)."""
     params = {"term": query, "media": "music", "entity": "song", "limit": limit, "country": country}
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(SEARCH_URL, params=params)
-        resp.raise_for_status()
+        resp = await itunes_get(client, SEARCH_URL, params)
         data = resp.json()
     return parse_scan(data, set())

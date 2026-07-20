@@ -46,6 +46,10 @@
   <span class="text-sm text-base-content/50 ml-auto self-center">Треков: {{ tracks | length }}</span>
 </form>
 
+<input type="search" id="track-search" placeholder="🔎 Поиск по названию трека…"
+       autocomplete="off"
+       class="input input-bordered input-sm w-full sm:w-80 mb-3" />
+
 {% if tracks %}
 <div class="overflow-x-auto">
   <table class="table table-sm bg-base-100 rounded-lg">
@@ -61,7 +65,8 @@
     </thead>
     <tbody>
       {% for t in tracks %}
-      <tr class="{% if t.is_muted %}opacity-50{% endif %}">
+      <tr id="track-{{ t.id }}" data-title="{{ t.title | lower }}"
+          class="{% if t.is_muted %}opacity-50{% endif %}">
         <td class="w-12">
           {% if t.cover_path %}
           <img src="/media/covers/{{ t.cover_path }}" alt="" class="w-10 h-10 rounded object-cover" />
@@ -119,4 +124,18 @@
 {% else %}
 <div class="text-center text-base-content/60 py-12">У артиста пока нет треков.</div>
 {% endif %}
+
+<script>
+  (function () {
+    var input = document.getElementById('track-search');
+    if (!input) return;
+    input.addEventListener('input', function () {
+      var q = this.value.trim().toLowerCase();
+      document.querySelectorAll('table tbody tr').forEach(function (row) {
+        var title = row.getAttribute('data-title') || '';
+        row.style.display = title.indexOf(q) >= 0 ? '' : 'none';
+      });
+    });
+  })();
+</script>
 {% endblock %}

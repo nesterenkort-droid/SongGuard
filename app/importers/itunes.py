@@ -6,6 +6,7 @@ from Spotify. Rate limit is ~20 req/min/IP, but a single lookup returns the whol
 catalog, so import is one request.
 """
 
+import asyncio
 from datetime import date
 
 import httpx
@@ -13,6 +14,27 @@ import httpx
 from app.importers.base import ImportedArtist, ImportedTrack
 
 LOOKUP_URL = "https://itunes.apple.com/lookup"
+
+
+async def itunes_get(
+    client: httpx.AsyncClient, url: str, params: dict, *, retries: int = 4
+) -> httpx.Response:
+    """GET an iTunes endpoint, retrying on 429 (Apple's ~20 req/min/IP limit) with a
+    bounded exponential backoff honoring Retry-After. Other HTTP errors raise at once."""
+    resp: httpx.Response | None = None
+    delay = 3.0
+    for attempt in range(retries):
+        resp = await client.get(url, params=params, timeout=30)
+        if resp.status_code != 429:
+            resp.raise_for_status()
+            return resp
+        if attempt < retries - 1:
+            wait = min(float(resp.headers.get("Retry-After", delay)), 30.0)
+            await asyncio.sleep(wait)
+            delay *= 2
+    assert resp is not None
+    resp.raise_for_status()  # exhausted retries -> surface the 429
+    return resp
 
 
 def _upscale(url: str | None) -> str | None:
@@ -76,7 +98,6 @@ async def import_artist(
         "country": country,
     }
     async with httpx.AsyncClient() as client:
-        resp = await client.get(LOOKUP_URL, params=params, timeout=30)
-        resp.raise_for_status()
+        resp = await itunes_get(client, LOOKUP_URL, params)
         data = resp.json()
     return parse_lookup(data, apple_artist_id)
