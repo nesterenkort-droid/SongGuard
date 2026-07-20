@@ -86,20 +86,60 @@
   </div>
 </div>
 
-<!-- Status tabs -->
-<div class="tabs tabs-boxed mb-4 w-fit">
+<!-- Status tabs (preserve active filters when switching) -->
+{% set qs %}{% if artist_id %}&artist_id={{ artist_id }}{% endif %}{% if platform %}&platform={{ platform }}{% endif %}{% if band %}&band={{ band }}{% endif %}{% endset %}
+<div class="tabs tabs-boxed mb-3 w-fit">
   {% for key, label in [('open','Новые'),('confirmed','Пиратки'),('packets','Пакеты'),('removed','Удалены 🎉'),('tolerated','Разрешённые'),('dismissed','Ложные')] %}
-  <a class="tab {% if status == key %}tab-active{% endif %}" href="/findings?status={{ key }}">
+  <a class="tab {% if status == key %}tab-active{% endif %}" href="/findings?status={{ key }}{{ qs }}">
     {{ label }}
     {% if tab_counts.get(key) %}<span class="badge badge-xs ml-1">{{ tab_counts[key] }}</span>{% endif %}
   </a>
   {% endfor %}
 </div>
 
+<!-- Filter bar -->
+<div class="flex flex-wrap items-end gap-2 mb-4">
+  <form method="get" class="flex flex-wrap items-end gap-2">
+    <input type="hidden" name="status" value="{{ status }}" />
+    <div>
+      <label class="text-xs text-base-content/60 block mb-0.5">Артист</label>
+      <select name="artist_id" onchange="this.form.submit()" class="select select-bordered select-sm">
+        <option value="">Все артисты</option>
+        {% for a, c in artists %}
+        <option value="{{ a.id }}" {% if artist_id == a.id %}selected{% endif %}>{{ a.name }} ({{ c }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-base-content/60 block mb-0.5">Площадка</label>
+      <select name="platform" onchange="this.form.submit()" class="select select-bordered select-sm">
+        <option value="">Все</option>
+        <option value="youtube" {% if platform == 'youtube' %}selected{% endif %}>YouTube</option>
+        <option value="spotify" {% if platform == 'spotify' %}selected{% endif %}>Spotify</option>
+        <option value="itunes" {% if platform == 'itunes' %}selected{% endif %}>Apple Music</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-base-content/60 block mb-0.5">Уверенность</label>
+      <select name="band" onchange="this.form.submit()" class="select select-bordered select-sm">
+        <option value="">Любая</option>
+        <option value="high" {% if band == 'high' %}selected{% endif %}>Высокая</option>
+        <option value="mid" {% if band == 'mid' %}selected{% endif %}>Средняя</option>
+      </select>
+    </div>
+    {% if artist_id or platform or band %}
+    <a href="/findings?status={{ status }}" class="btn btn-sm btn-ghost">Сброс</a>
+    {% endif %}
+  </form>
+  <input type="search" id="finding-search" placeholder="🔎 поиск по названию / каналу…" autocomplete="off"
+         class="input input-bordered input-sm w-full sm:w-64 sm:ml-auto" />
+</div>
+
 {% if rows %}
-<div class="flex flex-col gap-3">
+<div class="flex flex-col gap-3" id="findings-list">
   {% for finding, cand, track, artist in rows %}
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card bg-base-100 shadow-sm"
+       data-search="{{ ((cand.title or '') ~ ' ' ~ (cand.uploader or '') ~ ' ' ~ (track.title or '') ~ ' ' ~ (artist.name or '')) | lower }}">
     <div class="card-body p-4">
       <div class="flex gap-4">
         <!-- Pirate cover -->
@@ -231,4 +271,19 @@
   Здесь пока пусто. Запустите скан по артисту выше — найденные пиратки появятся тут.
 </div>
 {% endif %}
+
+<script>
+  (function () {
+    var input = document.getElementById('finding-search');
+    var list = document.getElementById('findings-list');
+    if (!input || !list) return;
+    input.addEventListener('input', function () {
+      var q = this.value.trim().toLowerCase();
+      list.querySelectorAll(':scope > .card').forEach(function (card) {
+        var hay = card.getAttribute('data-search') || '';
+        card.style.display = hay.indexOf(q) >= 0 ? '' : 'none';
+      });
+    });
+  })();
+</script>
 {% endblock %}

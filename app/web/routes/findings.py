@@ -78,6 +78,7 @@ async def findings_list(
     status: str = "open",
     band: str | None = None,
     platform: str | None = None,
+    artist_id: int | None = None,
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -100,6 +101,8 @@ async def findings_list(
         stmt = stmt.where(Finding.band == band)
     if platform:
         stmt = stmt.where(PlatformCandidate.platform == platform)
+    if artist_id:
+        stmt = stmt.where(Artist.id == artist_id)
 
     rows = (await session.execute(stmt.limit(200))).all()
 
@@ -120,6 +123,8 @@ async def findings_list(
             .join(ArtistMember, ArtistMember.artist_id == Artist.id)
             .where(ArtistMember.user_id == user.id)
         )
+    if artist_id:
+        count_stmt = count_stmt.where(Track.primary_artist_id == artist_id)
     status_counts = dict((await session.execute(count_stmt)).all())
     tab_counts = {
         tab: sum(status_counts.get(s, 0) for s in statuses)
@@ -186,6 +191,7 @@ async def findings_list(
             "status": status,
             "band": band,
             "platform": platform,
+            "artist_id": artist_id,
             "artists": artists,
             "status_labels": STATUS_LABELS,
             "geo_blocks": geo_blocks,
