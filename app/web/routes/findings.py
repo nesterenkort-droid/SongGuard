@@ -101,6 +101,21 @@ async def findings_list(
 
     rows = (await session.execute(stmt.limit(200))).all()
 
+    # Geo-block map: a YouTube video can show "unavailable" in the artist's country
+    # while being public everywhere else (region restriction) — that is NOT a takedown.
+    # Flag it so the card can say so instead of the user assuming it's gone.
+    home = settings.home_country_code
+    geo_blocks: dict[int, dict] = {}
+    for _f, cand, _t, _a in rows:
+        if cand.platform != "youtube" or not cand.raw_json:
+            continue
+        rr = (cand.raw_json.get("contentDetails") or {}).get("regionRestriction") or {}
+        allowed, blocked = rr.get("allowed"), rr.get("blocked")
+        if allowed is not None and home not in allowed:
+            geo_blocks[cand.id] = {"allowed_count": len(allowed)}
+        elif blocked is not None and home in blocked:
+            geo_blocks[cand.id] = {"allowed_count": None}
+
     # Artists the user can scan (for the scan dropdown).
     artists = await catalog.list_artists_for_user(session, user)
 
@@ -147,6 +162,8 @@ async def findings_list(
             "platform": platform,
             "artists": artists,
             "status_labels": STATUS_LABELS,
+            "geo_blocks": geo_blocks,
+            "home_country": home,
             "remaining_youtube_searches": remaining_youtube_searches,
             "total_youtube_searches": total_youtube_searches,
             "pending_jobs": pending_jobs,

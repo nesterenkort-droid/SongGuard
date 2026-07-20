@@ -129,6 +129,16 @@
           <div class="text-xs text-base-content/50 truncate">лейбл: {{ cand.parsed_plabel or cand.parsed_provider }}</div>
           {% endif %}
 
+          {% set geo = geo_blocks.get(cand.id) %}
+          {% if geo %}
+          <div class="mt-1">
+            <span class="badge badge-sm badge-warning badge-outline gap-1"
+              title="Видео заблокировано в вашей стране ({{ home_country }}) — поэтому в превью «недоступно». Но оно опубликовано и доступно{% if geo.allowed_count %} ещё в {{ geo.allowed_count }} странах{% else %} в других странах{% endif %}. Это НЕ снятие — пиратка активна.">
+              🌍 Недоступно в {{ home_country }}, но опубликовано в мире
+            </span>
+          </div>
+          {% endif %}
+
           {% if finding.audio_match %}
           <div class="mt-2 text-xs border border-base-300 bg-base-200/50 rounded p-2 flex gap-2 items-start">
             <span class="text-base">🎵</span>

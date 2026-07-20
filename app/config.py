@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     hot_track_max_clean_scans: int = 10
 
     # --- Web / sessions ---
+    # Home country (ISO code) — used to explain "video unavailable" previews that are
+    # actually just geo-blocked in the artist's country, not taken down.
+    home_country_code: str = "RU"
     base_url: str = "http://localhost:8080"  # public URL, used to build links
     session_cookie: str = "tg_session"
     session_max_age: int = 60 * 60 * 24 * 14  # 14 days
