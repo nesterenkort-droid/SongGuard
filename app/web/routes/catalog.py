@@ -10,7 +10,7 @@ from app.auth.deps import require_user
 from app.config import settings
 from app.db import get_session
 from app.models import AUDIO_REF_FULL, Track, User
-from app.services import audit, catalog
+from app.services import audit, catalog, panako
 from app.web.templating import render
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
@@ -61,8 +61,17 @@ async def artist_detail(
     if artist is None:
         return render(request, "404.html", user=user, status_code=404)
     tracks = await catalog.get_artist_tracks(session, artist_id)
+    # "Оригинал загружен" != "Panako реально проиндексировал его" — check the
+    # actual fingerprint file so the badge doesn't lie about audio-match readiness.
+    panako_indexed = {
+        t.id for t in tracks
+        if os.path.exists(os.path.join(panako.ORIGINALS_DIR, f"{t.id}_1.00.wav"))
+    }
     return render(
-        request, "artist.html", {"artist": artist, "tracks": tracks}, user=user
+        request,
+        "artist.html",
+        {"artist": artist, "tracks": tracks, "panako_indexed": panako_indexed},
+        user=user,
     )
 
 
@@ -118,6 +127,16 @@ async def upload_original(
 
     track.original_audio_path = filename
     track.audio_ref_status = AUDIO_REF_FULL
+
+    # Feed Panako so audio matching actually has something to compare against —
+    # without this, uploads were saved but the fingerprint database stayed empty
+    # and every candidate silently skipped the audio-match step. Best-effort: a
+    # Panako/ffmpeg hiccup must never block the upload itself from succeeding.
+    try:
+        panako_ok = await panako.store_reference(track.id, dest)
+    except Exception:  # noqa: BLE001
+        panako_ok = False
+
     await audit.log(
         session,
         actor_user_id=user.id,
@@ -125,7 +144,7 @@ async def upload_original(
         entity_type="track",
         entity_id=track.id,
         summary=f"Загружен оригинал для «{track.title}» ({len(content)} байт)",
-        data={"filename": filename, "size": len(content)},
+        data={"filename": filename, "size": len(content), "panako_indexed": panako_ok},
     )
     await session.commit()
     return RedirectResponse(f"/catalog/artist/{track.primary_artist_id}", status_code=303)

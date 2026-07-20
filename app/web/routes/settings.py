@@ -59,6 +59,7 @@ async def add_whitelist(
     entry_type: str = Form(...),
     value: str = Form(...),
     note: str = Form(""),
+    channel_url: str = Form(""),
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
@@ -75,6 +76,7 @@ async def add_whitelist(
         value=value,
         normalized_value=normalize_label(value),
         note=note.strip() or None,
+        channel_url=(channel_url.strip() or None) if entry_type == WL_CHANNEL else None,
         created_by_user_id=user.id,
     )
     session.add(entry)

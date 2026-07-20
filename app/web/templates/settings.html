@@ -11,10 +11,10 @@
   <div class="card-body p-4">
     <h2 class="card-title text-base">Наши лейблы и дистрибьюторы</h2>
     <p class="text-xs text-base-content/60 mb-2">
-      Впишите названия, под которыми ВАШИ треки легально выходят (например «0to8»,
-      «DistroKid», если это ваш дистрибьютор). Всё, что найдётся с ДРУГИМ лейблом/
-      дистрибьютором в описании — получает штраф как подозрительное. Без этого
-      списка сигнал «чужой лейбл» вообще не работает.
+      Впишите названия, под которыми ВАШИ треки легально выходят (ваш лейбл и/или
+      дистрибьютор). Всё, что найдётся с ДРУГИМ лейблом/дистрибьютором в описании —
+      получает штраф как подозрительное. Без этого списка сигнал «чужой лейбл»
+      вообще не работает.
     </p>
     <form method="post" action="/settings/whitelist" class="flex gap-2 items-end flex-wrap mb-3">
       <input type="hidden" name="entry_type" value="own_label" />
@@ -69,6 +69,10 @@
         <input name="value" required placeholder="TWXNY - Topic" class="input input-bordered input-sm" />
       </div>
       <div>
+        <label class="text-xs text-base-content/60 block">Ссылка на канал (необязательно)</label>
+        <input name="channel_url" type="url" placeholder="https://youtube.com/@channel" class="input input-bordered input-sm" />
+      </div>
+      <div>
         <label class="text-xs text-base-content/60 block">Заметка (необязательно)</label>
         <input name="note" placeholder="канал лейбла 0to8" class="input input-bordered input-sm" />
       </div>
@@ -81,7 +85,10 @@
         <tbody>
           {% for e in channels %}
           <tr>
-            <td class="font-medium">{{ e.value }}</td>
+            <td class="font-medium">
+              {{ e.value }}
+              {% if e.channel_url %}<a href="{{ e.channel_url }}" target="_blank" rel="noopener" class="link text-xs ml-1">🌐</a>{% endif %}
+            </td>
             <td class="text-base-content/60">{{ e.note or "—" }}</td>
             <td>
               <form method="post" action="/settings/whitelist/{{ e.id }}/delete">

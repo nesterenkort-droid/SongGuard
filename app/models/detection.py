@@ -220,6 +220,9 @@ class WhitelistEntry(Base):
     value: Mapped[str] = mapped_column(String(512))
     normalized_value: Mapped[str | None] = mapped_column(String(512), nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Optional, mainly for WL_CHANNEL entries: a link to the channel itself, so a
+    # human reviewing the whitelist can check it's the right one.
+    channel_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )

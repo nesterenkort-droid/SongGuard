@@ -4,6 +4,7 @@ to every artist automatically, with no per-artist duplication (real Postgres).""
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 
 from app.models import (
     WL_CHANNEL,
@@ -64,6 +65,26 @@ async def test_global_channel_applies_to_any_artist(db_session):
 
     ctx = await detection.build_context(session, artist)
     assert normalize_label("TWXNY - Topic") in ctx.whitelist_channels
+
+
+@pytest.mark.asyncio
+async def test_channel_entry_keeps_its_url(db_session):
+    """channel_url is display-only (not read by detection), but must round-trip —
+    it's how a reviewer confirms the whitelisted channel is the right one."""
+    session = db_session
+    session.add(
+        WhitelistEntry(
+            scope=WL_SCOPE_GLOBAL, artist_id=None, entry_type=WL_CHANNEL,
+            value="TWXNY - Topic", normalized_value=normalize_label("TWXNY - Topic"),
+            channel_url="https://youtube.com/@twxny",
+        )
+    )
+    await session.flush()
+
+    entry = await session.scalar(
+        select(WhitelistEntry).where(WhitelistEntry.value == "TWXNY - Topic")
+    )
+    assert entry.channel_url == "https://youtube.com/@twxny"
 
 
 @pytest.mark.asyncio

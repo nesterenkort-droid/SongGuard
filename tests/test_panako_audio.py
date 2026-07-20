@@ -113,6 +113,19 @@ async def test_panako_lifecycle():
         assert result_slow.score > 100
 
 
+async def test_store_reference_creates_the_file_the_dashboard_checks_for():
+    """The artist page's "🎵 готово к сверке" badge (app/web/routes/catalog.py)
+    checks for exactly this file — if store_reference's naming ever drifts, the
+    badge would silently lie about whether audio matching is actually possible."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_path = os.path.join(tmpdir, "original.wav")
+        await _generate_beep_audio(original_path, duration_sec=5)
+
+        assert await panako.store_reference(998, original_path) is True
+        expected = os.path.join(panako.ORIGINALS_DIR, "998_1.00.wav")
+        assert os.path.exists(expected)
+
+
 async def test_audio_converter():
     with tempfile.TemporaryDirectory() as tmpdir:
         src = os.path.join(tmpdir, "src.wav")

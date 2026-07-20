@@ -45,7 +45,10 @@
         </td>
         <td class="text-xs font-mono">{{ t.isrc or "—" }}</td>
         <td>
-          {% if t.audio_ref_status == "full" %}<span class="badge badge-xs badge-success">оригинал</span>
+          {% if t.id in panako_indexed %}
+          <span class="badge badge-xs badge-success" title="Panako проиндексировал оригинал — аудио-сверка работает">🎵 готово к сверке</span>
+          {% elif t.audio_ref_status == "full" %}
+          <span class="badge badge-xs badge-warning" title="Файл загружен, но Panako его ещё не проиндексировал">⏳ обрабатывается</span>
           {% elif t.audio_ref_status == "preview" %}<span class="badge badge-xs">превью</span>
           {% else %}<span class="badge badge-xs badge-ghost">нет</span>{% endif %}
         </td>
