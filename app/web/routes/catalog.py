@@ -2,6 +2,7 @@
 
 import logging
 import os
+from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -67,10 +68,21 @@ async def catalog_import(
     )
 
 
+def _parse_date(value: str):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
 @router.get("/artist/{artist_id}")
 async def artist_detail(
     request: Request,
     artist_id: int,
+    date_from: str = "",
+    date_to: str = "",
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -81,7 +93,9 @@ async def artist_detail(
     artist = await session.get(Artist, artist_id)
     if artist is None:
         return render(request, "404.html", user=user, status_code=404)
-    tracks = await catalog.get_artist_tracks(session, artist_id)
+    tracks = await catalog.get_artist_tracks(
+        session, artist_id, date_from=_parse_date(date_from), date_to=_parse_date(date_to)
+    )
     # "Оригинал загружен" != "Panako реально проиндексировал его" — check the
     # actual fingerprint file so the badge doesn't lie about audio-match readiness.
     panako_indexed = {
@@ -91,7 +105,13 @@ async def artist_detail(
     return render(
         request,
         "artist.html",
-        {"artist": artist, "tracks": tracks, "panako_indexed": panako_indexed},
+        {
+            "artist": artist,
+            "tracks": tracks,
+            "panako_indexed": panako_indexed,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
         user=user,
     )
 

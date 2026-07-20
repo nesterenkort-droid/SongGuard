@@ -30,6 +30,22 @@
   <span>↑ загрузить оригинал (WAV/MP3) для сверки по звуку</span>
 </div>
 
+<form method="get" class="flex items-end gap-2 mb-3 flex-wrap">
+  <div>
+    <label class="text-xs text-base-content/60 block mb-0.5">Дата релиза от</label>
+    <input type="date" name="date_from" value="{{ date_from }}" class="input input-bordered input-sm" />
+  </div>
+  <div>
+    <label class="text-xs text-base-content/60 block mb-0.5">до</label>
+    <input type="date" name="date_to" value="{{ date_to }}" class="input input-bordered input-sm" />
+  </div>
+  <button class="btn btn-sm btn-primary">Фильтр</button>
+  {% if date_from or date_to %}
+  <a href="/catalog/artist/{{ artist.id }}" class="btn btn-sm btn-ghost">Сброс</a>
+  {% endif %}
+  <span class="text-sm text-base-content/50 ml-auto self-center">Треков: {{ tracks | length }}</span>
+</form>
+
 {% if tracks %}
 <div class="overflow-x-auto">
   <table class="table table-sm bg-base-100 rounded-lg">

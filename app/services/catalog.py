@@ -241,10 +241,25 @@ async def user_can_access_artist(session: AsyncSession, user: User, artist_id: i
     return member is not None
 
 
-async def get_artist_tracks(session: AsyncSession, artist_id: int) -> list[Track]:
-    rows = await session.scalars(
-        select(Track)
-        .where(Track.primary_artist_id == artist_id)
-        .order_by(Track.release_date.desc().nullslast(), Track.title)
+async def get_artist_tracks(
+    session: AsyncSession,
+    artist_id: int,
+    *,
+    date_from=None,
+    date_to=None,
+) -> list[Track]:
+    """Tracks for an artist, ordered like the DSP shows them: newest release date
+    first, tracks of the same release (album/collection) grouped together. Optional
+    release-date range filter."""
+    stmt = select(Track).where(Track.primary_artist_id == artist_id)
+    if date_from is not None:
+        stmt = stmt.where(Track.release_date >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Track.release_date <= date_to)
+    stmt = stmt.order_by(
+        Track.release_date.desc().nullslast(),
+        Track.apple_collection_id.asc().nullslast(),
+        Track.id.asc(),
     )
+    rows = await session.scalars(stmt)
     return list(rows)
