@@ -115,6 +115,8 @@ async def toggle_pin(
     if track is None:
         return RedirectResponse("/catalog", status_code=303)
     track.is_hot_pinned = not track.is_hot_pinned
+    if track.is_hot_pinned:
+        track.is_muted = False  # watched and muted are mutually exclusive
     await audit.log(
         session,
         actor_user_id=user.id,
@@ -125,6 +127,62 @@ async def toggle_pin(
     )
     await session.commit()
     return RedirectResponse(f"/catalog/artist/{track.primary_artist_id}", status_code=303)
+
+
+@router.post("/track/{track_id}/mute")
+async def toggle_mute(
+    track_id: int,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+):
+    track = await _load_track_checked(session, user, track_id)
+    if track is None:
+        return RedirectResponse("/catalog", status_code=303)
+    track.is_muted = not track.is_muted
+    if track.is_muted:
+        track.is_hot_pinned = False  # muted -> not scanned, so not hot either
+    await audit.log(
+        session,
+        actor_user_id=user.id,
+        action="track.mute",
+        entity_type="track",
+        entity_id=track.id,
+        summary=f"{'Заглушён' if track.is_muted else 'Снята заглушка'} трек «{track.title}»",
+    )
+    await session.commit()
+    return RedirectResponse(f"/catalog/artist/{track.primary_artist_id}", status_code=303)
+
+
+@router.post("/artist/{artist_id}/mute-variants")
+async def mute_variants(
+    artist_id: int,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Bulk: mute every official variant (Slowed/Nightcore/…) of this artist at once."""
+    if not await catalog.user_can_access_artist(session, user, artist_id):
+        return RedirectResponse("/catalog", status_code=303)
+    from sqlalchemy import update
+
+    result = await session.execute(
+        update(Track)
+        .where(
+            Track.primary_artist_id == artist_id,
+            Track.is_variant.is_(True),
+            Track.is_muted.is_(False),
+        )
+        .values(is_muted=True, is_hot_pinned=False)
+    )
+    await audit.log(
+        session,
+        actor_user_id=user.id,
+        action="track.mute_variants",
+        entity_type="artist",
+        entity_id=artist_id,
+        summary=f"Заглушены все варианты артиста ({result.rowcount} треков)",
+    )
+    await session.commit()
+    return RedirectResponse(f"/catalog/artist/{artist_id}", status_code=303)
 
 
 @router.post("/track/{track_id}/upload")

@@ -499,7 +499,13 @@ async def run_scan_for_artist(
     do_search: bool = False,
 ) -> ScanSummary:
     """Live Tier 0 DSP diff (Spotify + Apple) for one artist, plus optional search."""
-    tracks = list(await session.scalars(select(Track).where(Track.primary_artist_id == artist.id)))
+    tracks = list(
+        await session.scalars(
+            select(Track).where(
+                Track.primary_artist_id == artist.id, Track.is_muted.is_(False)
+            )
+        )
+    )
     known_spotify = {t.spotify_track_id for t in tracks if t.spotify_track_id}
     known_apple = {str(t.apple_track_id) for t in tracks if t.apple_track_id}
 

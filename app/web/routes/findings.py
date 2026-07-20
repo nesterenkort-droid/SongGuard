@@ -86,6 +86,8 @@ async def findings_list(
         .join(PlatformCandidate, Finding.candidate_id == PlatformCandidate.id)
         .join(Track, Finding.track_id == Track.id)
         .join(Artist, Track.primary_artist_id == Artist.id)
+        # Muted tracks' findings are hidden everywhere (reversible via unmute).
+        .where(Track.is_muted.is_(False))
         .order_by(desc(Finding.score), desc(Finding.created_at))
     )
     if not user.is_admin:
@@ -100,6 +102,30 @@ async def findings_list(
         stmt = stmt.where(PlatformCandidate.platform == platform)
 
     rows = (await session.execute(stmt.limit(200))).all()
+
+    # Counts per tab (+ total) for the badges — excludes muted tracks, same visibility
+    # rules as the feed.
+    from sqlalchemy import func
+
+    count_stmt = (
+        select(Finding.status, func.count())
+        .select_from(Finding)
+        .join(Track, Finding.track_id == Track.id)
+        .where(Track.is_muted.is_(False))
+        .group_by(Finding.status)
+    )
+    if not user.is_admin:
+        count_stmt = (
+            count_stmt.join(Artist, Track.primary_artist_id == Artist.id)
+            .join(ArtistMember, ArtistMember.artist_id == Artist.id)
+            .where(ArtistMember.user_id == user.id)
+        )
+    status_counts = dict((await session.execute(count_stmt)).all())
+    tab_counts = {
+        tab: sum(status_counts.get(s, 0) for s in statuses)
+        for tab, statuses in STATUS_GROUPS.items()
+    }
+    total_findings = sum(status_counts.values())
 
     # Geo-block map: a YouTube video can show "unavailable" in the artist's country
     # while being public everywhere else (region restriction) — that is NOT a takedown.
@@ -164,6 +190,8 @@ async def findings_list(
             "status_labels": STATUS_LABELS,
             "geo_blocks": geo_blocks,
             "home_country": home,
+            "tab_counts": tab_counts,
+            "total_findings": total_findings,
             "remaining_youtube_searches": remaining_youtube_searches,
             "total_youtube_searches": total_youtube_searches,
             "pending_jobs": pending_jobs,

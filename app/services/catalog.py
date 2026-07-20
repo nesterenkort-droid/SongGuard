@@ -131,13 +131,21 @@ async def apply_imported_artist(
     artist, _created = await _get_or_create_artist(session, imported)
     await _ensure_membership(session, artist, actor_user)
 
+    # New releases found on a RE-import (artist already had tracks) are auto-watched
+    # (🔥 pinned) — a fresh release is the highest pirate risk. The initial bulk import
+    # is not pinned (we don't want the whole catalog marked "watched").
+    existing_count = await session.scalar(
+        select(func.count(Track.id)).where(Track.primary_artist_id == artist.id)
+    )
+    pin_new = bool(existing_count)
+
     created = updated = 0
     async with httpx.AsyncClient() as client:
         for it in imported.tracks:
             track = await _find_track(session, it)
             is_new = track is None
             if is_new:
-                track = Track(primary_artist_id=artist.id)
+                track = Track(primary_artist_id=artist.id, is_hot_pinned=pin_new)
                 session.add(track)
                 created += 1
             else:

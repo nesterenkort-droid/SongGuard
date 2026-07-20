@@ -83,8 +83,8 @@ async def populate_scan_jobs(session: AsyncSession) -> None:
     hot_cutoff = now - timedelta(hours=24)
     rotation_cutoff = now - timedelta(days=7)
 
-    # Выбираем все треки для анализа
-    tracks = list(await session.scalars(select(Track)))
+    # Выбираем все треки для анализа (заглушённые полностью исключены из сканирования)
+    tracks = list(await session.scalars(select(Track).where(Track.is_muted.is_(False))))
 
     for track in tracks:
         for platform in ["youtube", "spotify", "itunes"]:

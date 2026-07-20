@@ -7,9 +7,19 @@
     <a href="/catalog" class="text-sm link link-hover">← Каталог</a>
     <h1 class="text-2xl font-bold">{{ artist.name }}</h1>
   </div>
-  <div class="flex gap-1">
+  <div class="flex gap-2 items-center">
     {% if artist.apple_artist_id %}<span class="badge">Apple {{ artist.apple_artist_id }}</span>{% endif %}
     {% if artist.spotify_artist_id %}<span class="badge badge-success">Spotify</span>{% endif %}
+    {% set variant_count = tracks | selectattr('is_variant') | rejectattr('is_muted') | list | length %}
+    {% if variant_count %}
+    <form method="post" action="/catalog/artist/{{ artist.id }}/mute-variants"
+          onsubmit="return confirm('Заглушить все варианты ({{ variant_count }})? Их перестанут сканировать, а находки по ним скроются.');">
+      <button class="btn btn-xs btn-outline btn-warning"
+              title="Заглушить все официальные варианты (Slowed/Nightcore/…): не сканируем, находки скрываются">
+        🔇 Заглушить варианты ({{ variant_count }})
+      </button>
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -36,7 +46,8 @@
           <div class="font-medium">{{ t.title }}</div>
           <div class="flex gap-1 mt-1">
             {% if t.is_variant %}<span class="badge badge-xs badge-warning">{{ t.variant_label }}</span>{% endif %}
-            {% if t.is_hot_pinned %}<span class="badge badge-xs badge-error">📌 горячий</span>{% endif %}
+            {% if t.is_muted %}<span class="badge badge-xs badge-ghost">🔇 заглушён</span>
+            {% elif t.is_hot_pinned %}<span class="badge badge-xs badge-error">🔥 слежу</span>{% endif %}
           </div>
         </td>
         <td class="text-xs">{{ t.release_date or "—" }}</td>
@@ -61,11 +72,20 @@
           </form>
         </td>
         <td>
-          <form method="post" action="/catalog/track/{{ t.id }}/pin">
-            <button class="btn btn-xs btn-ghost" title="Закрепить в «горячих»">
-              {% if t.is_hot_pinned %}📌{% else %}📍{% endif %}
-            </button>
-          </form>
+          <div class="flex gap-1">
+            <form method="post" action="/catalog/track/{{ t.id }}/pin">
+              <button class="btn btn-xs btn-ghost"
+                      title="{% if t.is_hot_pinned %}Убрать из активной слежки{% else %}Следить активно (частый скан){% endif %}">
+                {% if t.is_hot_pinned %}🔥{% else %}📍{% endif %}
+              </button>
+            </form>
+            <form method="post" action="/catalog/track/{{ t.id }}/mute">
+              <button class="btn btn-xs btn-ghost"
+                      title="{% if t.is_muted %}Снять заглушку (снова сканировать){% else %}Заглушить: не сканировать и скрыть находки{% endif %}">
+                {% if t.is_muted %}🔊{% else %}🔇{% endif %}
+              </button>
+            </form>
+          </div>
         </td>
       </tr>
       {% endfor %}

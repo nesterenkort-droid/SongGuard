@@ -3,7 +3,9 @@
 
 {% block content %}
 <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-  <h1 class="text-2xl font-bold">Находки</h1>
+  <h1 class="text-2xl font-bold">Находки
+    <span class="text-base font-normal text-base-content/50">· всего {{ total_findings }}</span>
+  </h1>
   <form method="post" action="/findings/scan" class="flex items-end gap-2">
     <div>
       <label class="text-xs text-base-content/60">Запустить скан</label>
@@ -87,7 +89,10 @@
 <!-- Status tabs -->
 <div class="tabs tabs-boxed mb-4 w-fit">
   {% for key, label in [('open','Новые'),('confirmed','Пиратки'),('packets','Пакеты'),('removed','Удалены 🎉'),('tolerated','Разрешённые'),('dismissed','Ложные')] %}
-  <a class="tab {% if status == key %}tab-active{% endif %}" href="/findings?status={{ key }}">{{ label }}</a>
+  <a class="tab {% if status == key %}tab-active{% endif %}" href="/findings?status={{ key }}">
+    {{ label }}
+    {% if tab_counts.get(key) %}<span class="badge badge-xs ml-1">{{ tab_counts[key] }}</span>{% endif %}
+  </a>
   {% endfor %}
 </div>
 

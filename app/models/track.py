@@ -74,6 +74,9 @@ class Track(Base):
 
     # Scan scheduling.
     is_hot_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Muted = user doesn't care about this track: never scanned, and its findings are
+    # hidden from the dashboard (reversible — unmute brings them back).
+    is_muted: Mapped[bool] = mapped_column(Boolean, default=False)
     last_scanned_youtube: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
