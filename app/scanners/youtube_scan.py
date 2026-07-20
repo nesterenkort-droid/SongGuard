@@ -206,6 +206,8 @@ def _ytdlp_search_sync(query: str, limit: int) -> list[dict]:
         "noplaylist": True,
         "socket_timeout": 30,
     }
+    if settings.ytdlp_cookies_file:
+        opts["cookiefile"] = settings.ytdlp_cookies_file
     out: list[dict] = []
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
@@ -270,6 +272,12 @@ async def _search_tracks_ytdlp(query: str, limit: int) -> list[RawCandidate] | N
                     duration_ms=f["duration_ms"],
                 )
             )
+
+    # Gentle pacing so consecutive searches (a full-catalog run or the scheduler)
+    # don't hammer YouTube from a server IP.
+    delay = settings.youtube_ytdlp_delay_seconds
+    if delay and delay > 0:
+        await asyncio.sleep(delay)
     return out
 
 

@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # ytsearch — no quota, no key; enriched via cheap videos.list, 1 unit). "ytdlp"
     # falls back to "api" automatically if yt-dlp is blocked/errors.
     youtube_search_backend: str = "api"
+    # Optional path to a Netscape cookies.txt for yt-dlp (search + audio download).
+    # Use ONLY a throwaway Google account — automating with a real account's cookies
+    # from a server IP risks that account. Empty = no cookies (default).
+    ytdlp_cookies_file: str | None = None
+    # Gentle pacing for the yt-dlp search backend: sleep this many seconds after each
+    # search so we don't hammer YouTube from a server IP (bot-detection). Applies to
+    # the "ytdlp" backend only; 0 = no delay.
+    youtube_ytdlp_delay_seconds: float = 0.0
     youtube_api_key: str | None = None
     # Google's real cap is ~10 000 units/day per key (search costs 100 units each).
     # With 2 rotated keys that's ~200 searches/day of real headroom; 180 leaves a

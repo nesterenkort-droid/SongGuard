@@ -7,6 +7,8 @@ import httpx
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,6 +93,8 @@ async def download_youtube_audio(youtube_url: str, dest_path: str) -> bool:
             "force_keyframes_at_cuts": True,
             "socket_timeout": 30,
         }
+        if settings.ytdlp_cookies_file:
+            ydl_opts["cookiefile"] = settings.ytdlp_cookies_file
 
         # Run yt-dlp in a thread pool to keep loop non-blocking
         loop = asyncio.get_running_loop()
