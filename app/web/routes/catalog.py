@@ -1,7 +1,9 @@
 """Catalog routes: list artists, import, artist detail, pin, upload originals."""
 
+import logging
 import os
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,10 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import require_user
 from app.config import settings
 from app.db import get_session
+from app.importers.spotify import SpotifyNotConfigured
 from app.models import AUDIO_REF_FULL, Track, User
 from app.services import audit, catalog, panako
 from app.web.templating import render
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 
@@ -33,17 +37,34 @@ async def catalog_import(
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
 ):
+    error: str | None = None
     try:
         result = await catalog.import_artist_catalog(session, actor_user=user, ref=ref)
-    except ValueError as exc:
-        artists = await catalog.list_artists_for_user(session, user)
-        return render(
-            request,
-            "catalog_list.html",
-            {"artists": artists, "error": str(exc)},
-            user=user,
+    except (ValueError, SpotifyNotConfigured) as exc:
+        # Bad/unrecognized link, or Spotify creds missing — message is user-friendly.
+        error = str(exc)
+    except httpx.HTTPStatusError as exc:
+        logger.warning("catalog import HTTP error: %s", exc)
+        error = (
+            f"Площадка вернула ошибку {exc.response.status_code} при импорте. "
+            "Проверьте ссылку на артиста или попробуйте позже."
         )
-    return RedirectResponse(f"/catalog/artist/{result['artist_id']}", status_code=303)
+    except httpx.HTTPError as exc:
+        logger.warning("catalog import network error: %s", exc)
+        error = "Не удалось связаться с площадкой (сеть/таймаут). Попробуйте ещё раз."
+    except Exception:  # noqa: BLE001 - never surface a raw 500 for an import attempt
+        logger.exception("unexpected catalog import error")
+        error = "Не удалось импортировать каталог — внутренняя ошибка. Попробуйте позже."
+    else:
+        return RedirectResponse(f"/catalog/artist/{result['artist_id']}", status_code=303)
+
+    artists = await catalog.list_artists_for_user(session, user)
+    return render(
+        request,
+        "catalog_list.html",
+        {"artists": artists, "error": error},
+        user=user,
+    )
 
 
 @router.get("/artist/{artist_id}")

@@ -197,6 +197,26 @@ def _artist_matches(uploader: str | None, artist_names: list[str]) -> str | None
     return None
 
 
+def _is_own_channel(uploader: str | None, artist_names: list[str], ctx: DetectionContext) -> bool:
+    """True if the uploader is our own official channel: a whitelisted channel, the
+    YouTube auto-generated "<Artist> - Topic" channel, or exactly our artist name.
+
+    Deliberately conservative — matches the auto-channel/own name, NOT any channel
+    that merely mentions the artist (so a pirate "<Artist> Remixes" is still flagged).
+    """
+    up = normalize_label(uploader or "")
+    if not up:
+        return False
+    base = up[:-6].strip() if up.endswith(" topic") else up  # strip auto "- Topic"
+    if up in ctx.whitelist_channels or base in ctx.whitelist_channels:
+        return True
+    for name in artist_names:
+        n = normalize_label(name)
+        if n and (n == up or n == base):
+            return True
+    return False
+
+
 def whitelist_gate(cand: CandidateFacts, track: TrackFacts, ctx: DetectionContext) -> str | None:
     """If the candidate is provably ours/allowed, return a human reason; else None.
 
@@ -208,8 +228,24 @@ def whitelist_gate(cand: CandidateFacts, track: TrackFacts, ctx: DetectionContex
             return f"ISRC совпадает с нашим ({track.isrc}) — это наша доставка"
         if ci.lower() in ctx.whitelist_isrcs:
             return f"ISRC {cand.isrc} в белом списке"
-    if cand.uploader and normalize_label(cand.uploader) in ctx.whitelist_channels:
-        return f"Канал «{cand.uploader}» в белом списке"
+    # Our own label/distributor on the release → it's our official delivery, not piracy.
+    if ctx.own_labels:
+        for lbl in (normalize_label(cand.parsed_plabel), normalize_label(cand.parsed_provider)):
+            if lbl and lbl in ctx.own_labels:
+                shown = cand.parsed_plabel or cand.parsed_provider
+                return f"Лейбл «{shown}» — наш собственный"
+    # Our own official channel (whitelisted / "<Artist> - Topic" / exact artist name).
+    if _is_own_channel(cand.uploader, track.artist_names, ctx):
+        return f"Канал «{cand.uploader}» — наш официальный"
+    # On a DSP (Spotify/Apple) the credited artist is authoritative: a release whose
+    # credit includes our artist is an official delivery (possibly on another album),
+    # not piracy — a pirate reupload uses a soundalike name, not our verified artist.
+    if cand.platform in ("spotify", "itunes") and cand.uploader:
+        up_tokens = set(normalize_title(cand.uploader).split())
+        for name in track.artist_names:
+            nt = set(normalize_title(name).split())
+            if nt and nt <= up_tokens:
+                return f"Официальный релиз, в титрах наш артист: «{cand.uploader}»"
     pid = normalize_label(cand.native_id)
     if pid and pid in ctx.whitelist_platform_ids:
         return "Идентификатор релиза в белом списке"
@@ -348,6 +384,17 @@ def score_candidate(
             add("audio_no_match", "Звук не совпадает с оригиналом", None, -50)
 
     score = sum(s.contribution for s in signals)
+
+    # An "identity anchor" is required before we call a candidate a copy of THIS track.
+    # Title / cover / audio (ISRC-diff already implies a title match) actually identify
+    # the song; duration-ratio, variant suffix, artist credit and date only corroborate
+    # and coincide across unrelated songs (a random track whose length is ×0.8 of one of
+    # ours + a "Slowed" suffix would otherwise score 45+). No anchor → LOW (dropped).
+    anchor_keys = {"title_exact", "title_fuzzy", "cover", "audio_match"}
+    has_anchor = any(s.key in anchor_keys for s in signals)
+    if not has_anchor:
+        return ScoreResult(score=score, band=BAND_LOW, signals=signals)
+
     if score >= THRESHOLD_HIGH:
         band = BAND_HIGH
     elif score >= THRESHOLD_MID:

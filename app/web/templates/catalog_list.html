@@ -11,15 +11,32 @@
       Вставьте ссылку на артиста в Apple Music или Spotify. Система затянет весь
       каталог: названия, даты, длительности, обложки (Spotify — ещё и ISRC).
     </p>
-    <form method="post" action="/catalog/import" class="flex flex-col sm:flex-row gap-2 mt-2">
+    <form id="import-form" method="post" action="/catalog/import" class="flex flex-col sm:flex-row gap-2 mt-2">
       <input name="ref" required
              placeholder="https://music.apple.com/us/artist/.../1718381786"
              class="input input-bordered flex-1" />
-      <button class="btn btn-primary">Импортировать</button>
+      <button id="import-btn" class="btn btn-primary">Импортировать</button>
     </form>
+    <p id="import-hint" class="hidden text-sm text-base-content/60 mt-2">
+      <span class="loading loading-spinner loading-xs align-middle"></span>
+      Тянем каталог с площадки — для больших дискографий это может занять пару минут.
+      Не закрывайте страницу.
+    </p>
     {% if error %}
     <div class="alert alert-error mt-2 text-sm">{{ error }}</div>
     {% endif %}
+    <script>
+      (function () {
+        var form = document.getElementById('import-form');
+        if (!form) return;
+        form.addEventListener('submit', function () {
+          var b = document.getElementById('import-btn');
+          b.classList.add('btn-disabled');
+          b.innerHTML = '<span class="loading loading-spinner loading-sm"></span> Импортирую…';
+          document.getElementById('import-hint').classList.remove('hidden');
+        });
+      })();
+    </script>
   </div>
 </div>
 

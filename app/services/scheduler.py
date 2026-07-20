@@ -162,57 +162,65 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
         # Выполняем сканирование в зависимости от платформы
         q = f"{track.title} {artist.name}"
         if platform == "youtube":
-            # 1. Проверяем и списываем дневную квоту поиска YouTube
-            # Лимитируем только реальный поиск (Priority 10, 20, 100)
-            if not await budgeter.consume_youtube_search_quota(session):
-                raise BudgetExhaustedError("Превышена дневная квота поиска YouTube")
+            if not settings.youtube_search_enabled:
+                logger.info("YouTube-поиск отключён (YOUTUBE_SEARCH_ENABLED=false) — пропуск")
+                raws = []
+            else:
+                # 1. Проверяем и списываем дневную квоту поиска YouTube
+                # Лимитируем только реальный поиск (Priority 10, 20, 100)
+                if not await budgeter.consume_youtube_search_quota(session):
+                    raise BudgetExhaustedError("Превышена дневная квота поиска YouTube")
 
-            # 2. Делаем поиск трека
-            raws.extend(await youtube_scan.search_tracks(q, limit=5))
+                # 2. Делаем поиск трека
+                raws.extend(await youtube_scan.search_tracks(q, limit=5))
 
-            # 3. Дополнительно проверяем Topic-канал (не чаще раза в 12 часов для артиста)
-            if artist.yt_topic_channel_id:
-                topic_lock_key = f"youtube:topic_scanned:{artist.id}"
-                if not await redis_client.exists(topic_lock_key):
-                    is_uc = artist.yt_topic_channel_id.startswith("UC")
-                    playlist_id = (
-                        "UU" + artist.yt_topic_channel_id[2:]
-                        if is_uc
-                        else artist.yt_topic_channel_id
-                    )
-                    topic_raws = await youtube_scan.scan_playlist_items(
-                        playlist_id, known_video_ids=set(), limit=15
-                    )
-                    if topic_raws:
-                        raws.extend(topic_raws)
-                        await redis_client.set(topic_lock_key, "1", ex=43200)  # 12 часов
+                # 3. Дополнительно проверяем Topic-канал (не чаще раза в 12 часов для артиста)
+                if artist.yt_topic_channel_id:
+                    topic_lock_key = f"youtube:topic_scanned:{artist.id}"
+                    if not await redis_client.exists(topic_lock_key):
+                        is_uc = artist.yt_topic_channel_id.startswith("UC")
+                        playlist_id = (
+                            "UU" + artist.yt_topic_channel_id[2:]
+                            if is_uc
+                            else artist.yt_topic_channel_id
+                        )
+                        topic_raws = await youtube_scan.scan_playlist_items(
+                            playlist_id, known_video_ids=set(), limit=15
+                        )
+                        if topic_raws:
+                            raws.extend(topic_raws)
+                            await redis_client.set(topic_lock_key, "1", ex=43200)  # 12 часов
 
         elif platform == "spotify":
-            # Соблюдаем token-bucket частоту запросов
-            # Spotify: 30 запросов в минуту (емкость 5, восполнение 0.5 токенов в секунду)
-            if not await budgeter.acquire_token(platform, capacity=5, refill_rate=0.5):
-                raise BudgetExhaustedError("Превышен лимит частоты запросов Spotify (token bucket)")
+            if not settings.spotify_enabled:
+                logger.info("Spotify отключён (SPOTIFY_ENABLED=false) — пропуск скана")
+                raws = []
+            else:
+                # Соблюдаем token-bucket частоту запросов
+                # Spotify: 30 запросов в минуту (емкость 5, восполнение 0.5 токенов в секунду)
+                if not await budgeter.acquire_token(platform, capacity=5, refill_rate=0.5):
+                    raise BudgetExhaustedError("Превышен лимит частоты запросов Spotify (token bucket)")
 
-            raws.extend(await spotify_scan.search_tracks(q, limit=5))
-            
-            # Сканируем страницу артиста (не чаще раза в 6 часов)
-            if artist.spotify_artist_id:
-                spot_lock_key = f"spotify:artist_scanned:{artist.id}"
-                if not await redis_client.exists(spot_lock_key):
-                    spot_res = await session.scalars(
-                        select(Track.spotify_track_id)
-                        .where(
-                            Track.primary_artist_id == artist.id,
-                            Track.spotify_track_id.is_not(None),
+                raws.extend(await spotify_scan.search_tracks(q, limit=5))
+
+                # Сканируем страницу артиста (не чаще раза в 6 часов)
+                if artist.spotify_artist_id:
+                    spot_lock_key = f"spotify:artist_scanned:{artist.id}"
+                    if not await redis_client.exists(spot_lock_key):
+                        spot_res = await session.scalars(
+                            select(Track.spotify_track_id)
+                            .where(
+                                Track.primary_artist_id == artist.id,
+                                Track.spotify_track_id.is_not(None),
+                            )
                         )
-                    )
-                    known_ids = set(spot_res)
-                    raws.extend(
-                        await spotify_scan.scan_artist_page(
-                            artist.spotify_artist_id, known_ids
+                        known_ids = set(spot_res)
+                        raws.extend(
+                            await spotify_scan.scan_artist_page(
+                                artist.spotify_artist_id, known_ids
+                            )
                         )
-                    )
-                    await redis_client.set(spot_lock_key, "1", ex=21600)  # 6 часов
+                        await redis_client.set(spot_lock_key, "1", ex=21600)  # 6 часов
 
         elif platform == "itunes":
             # iTunes: 20 запросов в минуту (емкость 3, восполнение 0.33 токенов в секунду)

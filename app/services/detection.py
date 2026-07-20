@@ -234,7 +234,13 @@ class ScanSummary:
 def _best_results(
     cand_facts: CandidateFacts, tracks: list[tuple[Artist, Track]], ctx: DetectionContext
 ) -> list[tuple[Track, ScoreResult]]:
-    """Score a candidate against every track; keep non-low, non-gated matches."""
+    """Score a candidate against every track; return only the SINGLE best match.
+
+    A candidate is one upload — it copies at most one of our originals. Scoring it
+    against every track (and persisting a finding for each) produced N near-duplicate
+    findings per candidate, especially for artists with many same-cover variants.
+    We keep only the strongest match; if it's gated-as-ours or low-band, nothing.
+    """
     out: list[tuple[Track, ScoreResult]] = []
     for artist, track in tracks:
         tf = _track_facts(artist, track)
@@ -243,9 +249,9 @@ def _best_results(
         result = score_candidate(cand_facts, tf, ctx)
         if result.band != BAND_LOW:
             out.append((track, result))
-    # Strongest match first.
+    # Strongest match first, keep only that one (dedupe the ×N explosion).
     out.sort(key=lambda r: r[1].score, reverse=True)
-    return out
+    return out[:1]
 
 
 async def _persist_finding(
@@ -490,7 +496,7 @@ async def run_scan_for_artist(
     known_apple = {str(t.apple_track_id) for t in tracks if t.apple_track_id}
 
     raws: list[RawCandidate] = []
-    if artist.spotify_artist_id:
+    if settings.spotify_enabled and artist.spotify_artist_id:
         raws.extend(await spotify_scan.scan_artist_page(artist.spotify_artist_id, known_spotify))
     if artist.apple_artist_id:
         apple_raws = await itunes_scan.scan_artist_page(artist.apple_artist_id, known_apple)
@@ -500,10 +506,10 @@ async def run_scan_for_artist(
     if do_search:
         for t in tracks:
             q = f"{t.title} {artist.name}"
-            if artist.spotify_artist_id:
+            if settings.spotify_enabled and artist.spotify_artist_id:
                 raws.extend(await spotify_scan.search_tracks(q))
             raws.extend(await itunes_scan.search_tracks(q))
-            if settings.youtube_api_key:
+            if settings.youtube_api_key and settings.youtube_search_enabled:
                 raws.extend(await youtube_scan.search_tracks(q))
 
     ctx = await build_context(session, artist)

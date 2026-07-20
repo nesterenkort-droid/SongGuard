@@ -77,10 +77,16 @@ async def _request(
         if resp.status_code != 429:
             return resp
         retry_after = int(resp.headers.get("Retry-After", "5"))
-        # Publish a cooldown so concurrent callers back off too.
+        # Cap how long a single 429 makes us wait: Spotify can return a Retry-After of
+        # hours, and blindly sleeping it would freeze the caller (and, via the shared
+        # cooldown, every scanner) for that whole time. Back off, but bounded.
+        backoff = min(retry_after, 3600)
         await redis_client.set(
-            _COOLDOWN_KEY, str(time.time() + retry_after), ex=retry_after + 5
+            _COOLDOWN_KEY, str(time.time() + backoff), ex=backoff + 5
         )
+        if retry_after > 60:
+            # Don't spin retries on an hours-long ban — surface the 429 to the caller.
+            return resp
         await asyncio.sleep(retry_after)
     assert resp is not None
     return resp

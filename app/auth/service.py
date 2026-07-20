@@ -79,10 +79,13 @@ async def confirm_start(
     now = datetime.now(UTC)
     user = await session.scalar(select(User).where(User.tg_user_id == tg_user_id))
     is_bootstrap_admin = tg_user_id in settings.admin_ids
+    # DEMO ONLY (DEMO_OPEN_ADMIN): open registration + auto-admin for anyone who logs
+    # in via the bot. Disable before production.
+    demo_admin = settings.demo_open_admin
     registered = False
 
     if user is None:
-        if is_bootstrap_admin:
+        if is_bootstrap_admin or demo_admin:
             user = User(tg_user_id=tg_user_id, display_name=display_name, is_admin=True)
             session.add(user)
             registered = True
@@ -105,7 +108,7 @@ async def confirm_start(
             invite.used_at = now
             registered = True
     else:
-        if is_bootstrap_admin and not user.is_admin:
+        if (is_bootstrap_admin or demo_admin) and not user.is_admin:
             user.is_admin = True
         if display_name:
             user.display_name = display_name

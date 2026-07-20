@@ -30,8 +30,15 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_bot_username: str | None = None  # without leading @, for deep-links
     admin_tg_ids: str = ""  # comma-separated Telegram user IDs
+    # DEMO ONLY: when true, anyone who logs in via the bot is registered without an
+    # invite and granted admin. Keep false in production (single bootstrap admin,
+    # others via invite). Toggled by DEMO_OPEN_ADMIN in .env.
+    demo_open_admin: bool = False
 
     # --- Spotify (client-credentials; optional until the user creates an app) ---
+    # Master switch: when false, no Spotify scanning/search runs at all (e.g. while
+    # the account is rate-limited, or when a catalog was imported from Apple only).
+    spotify_enabled: bool = True
     spotify_client_id: str | None = None
     spotify_client_secret: str | None = None
     # Throttling: dev-mode quota is small and measured over a rolling 30s window.
@@ -41,6 +48,9 @@ class Settings(BaseSettings):
     spotify_max_retries: int = 4
 
     # --- YouTube ---
+    # Master switch for YouTube search scanning (like spotify_enabled). Turn off to
+    # stop the scheduler burning search quota; a targeted manual scan can still run.
+    youtube_search_enabled: bool = True
     youtube_api_key: str | None = None
     # Google's real cap is ~10 000 units/day per key (search costs 100 units each).
     # With 2 rotated keys that's ~200 searches/day of real headroom; 180 leaves a
