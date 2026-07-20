@@ -85,6 +85,7 @@ async def download_youtube_audio(youtube_url: str, dest_path: str) -> bool:
             "no_warnings": True,
             "download_ranges": download_range_func(None, [(0.0, 60.0)]),
             "force_keyframes_at_cuts": True,
+            "socket_timeout": 30,
         }
 
         # Run yt-dlp in a thread pool to keep loop non-blocking

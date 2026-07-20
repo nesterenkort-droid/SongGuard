@@ -17,6 +17,12 @@ logger = logging.getLogger("trackguard.youtube_scan")
 PLATFORM = "youtube"
 
 
+class YouTubeAPIError(Exception):
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 async def _get_youtube_api_key() -> str | None:
     """Возвращает следующий API ключ YouTube из списка настроенных, чередуя их."""
     keys_str = settings.youtube_api_key
@@ -163,9 +169,8 @@ async def _fetch_video_details(
                 "raw_json": item,
             }
         return details
-    except Exception as e:
-        logger.error("Ошибка при запросе деталей видео YouTube: %s", e)
-        return {}
+    except httpx.HTTPStatusError as e:
+        raise YouTubeAPIError(str(e), e.response.status_code) from e
 
 
 async def search_tracks(query: str, limit: int = 10) -> list[RawCandidate]:
@@ -226,9 +231,8 @@ async def search_tracks(query: str, limit: int = 10) -> list[RawCandidate]:
                     )
                 )
             return candidates
-        except Exception as e:
-            logger.error("Ошибка при поиске видео YouTube: %s", e)
-            return []
+        except httpx.HTTPStatusError as e:
+            raise YouTubeAPIError(str(e), e.response.status_code) from e
 
 
 async def scan_playlist_items(
@@ -253,15 +257,27 @@ async def scan_playlist_items(
         }
 
         try:
-            resp = await client.get(url, params=params, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
-
             video_ids = []
-            for item in data.get("items", []):
-                vid = item.get("snippet", {}).get("resourceId", {}).get("videoId")
-                if vid and vid not in known_video_ids:
-                    video_ids.append(vid)
+            page_token = None
+            
+            while True:
+                if page_token:
+                    params["pageToken"] = page_token
+                    
+                resp = await client.get(url, params=params, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+
+                for item in data.get("items", []):
+                    vid = item.get("snippet", {}).get("resourceId", {}).get("videoId")
+                    if vid and vid not in known_video_ids and vid not in video_ids:
+                        video_ids.append(vid)
+
+                page_token = data.get("nextPageToken")
+                if not page_token or len(video_ids) >= limit:
+                    break
+
+            video_ids = video_ids[:limit]
 
             if not video_ids:
                 return []
@@ -291,6 +307,5 @@ async def scan_playlist_items(
                     )
                 )
             return candidates
-        except Exception as e:
-            logger.error("Ошибка при сканировании плейлиста YouTube: %s", e)
-            return []
+        except httpx.HTTPStatusError as e:
+            raise YouTubeAPIError(str(e), e.response.status_code) from e

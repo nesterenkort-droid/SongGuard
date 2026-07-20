@@ -252,6 +252,7 @@ class ScanJob(Base):
         DateTime(timezone=True), nullable=True
     )
     outcome: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

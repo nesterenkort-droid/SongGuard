@@ -206,6 +206,10 @@ def _label_signal(cand: CandidateFacts, ctx: DetectionContext) -> Signal | None:
     if not candidates:
         return None
 
+    # First, if the label is one of our own labels, we do not flag it.
+    if ctx.own_labels and any(c in ctx.own_labels for c in candidates):
+        return None
+
     # Strongest: known pirate entity or the DistroKid `\d+ Records DK` autolabel.
     for c in candidates:
         if c in ctx.pirate_labels or _RECORDS_DK_RE.match(c) or "distrokid" in c:
@@ -219,7 +223,7 @@ def _label_signal(cand: CandidateFacts, ctx: DetectionContext) -> Signal | None:
             )
 
     # Otherwise: foreign label only meaningful if the tenant declared its own labels.
-    if ctx.own_labels and not any(c in ctx.own_labels for c in candidates):
+    if ctx.own_labels:
         shown = cand.parsed_provider or cand.parsed_plabel
         return Signal(
             "foreign_label",

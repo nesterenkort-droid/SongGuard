@@ -416,7 +416,7 @@ async def ingest_candidates(
                         candidate_uploader=cand.uploader or "Unknown",
                         candidate_description=cand.description_raw or "",
                         candidate_platform=cand.platform,
-                        duration_diff_sec=abs((cand.duration_ms or 0) - (track.duration_ms or 0)) / 1000.0,
+                        duration_diff_sec=abs(cand.duration_ms - track.duration_ms) / 1000.0 if cand.duration_ms is not None and track.duration_ms is not None else None,
                         score_before_ai=result.score,
                         audio_matched=bool(audio_match_dict and audio_match_dict.get("matched")),
                         audio_true_stretch=audio_match_dict.get("true_stretch") if audio_match_dict else None,

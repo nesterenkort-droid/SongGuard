@@ -53,14 +53,15 @@ async def setup_data(db_session):
 @pytest.mark.asyncio
 async def test_is_track_hot_decay_logic(db_session, setup_data):
     artist, track = setup_data
+    platform = "youtube"
 
     # 1. По умолчанию новый трек не горячий
-    assert await is_track_hot(db_session, track) is False
+    assert await is_track_hot(db_session, track, platform) is False
 
     # 2. Если трек закреплен (is_hot_pinned), то он горячий
     track.is_hot_pinned = True
     await db_session.flush()
-    assert await is_track_hot(db_session, track) is True
+    assert await is_track_hot(db_session, track, platform) is True
 
     # Снимаем закрепление
     track.is_hot_pinned = False
@@ -86,34 +87,34 @@ async def test_is_track_hot_decay_logic(db_session, setup_data):
     )
     db_session.add(finding)
     await db_session.flush()
-    assert await is_track_hot(db_session, track) is True
+    assert await is_track_hot(db_session, track, platform) is True
 
     # 4. Проверяем старение по времени (находка создана 61 день назад при лимите 60 дней)
     with patch.object(settings, "hot_track_decay_days", 60):
         # Меняем дату находки «в прошлое»
         finding.created_at = datetime.now(UTC) - timedelta(days=61)
         await db_session.flush()
-        assert await is_track_hot(db_session, track) is False
+        assert await is_track_hot(db_session, track, platform) is False
 
         # Возвращаем дату находки в настоящее время
         finding.created_at = datetime.now(UTC)
         await db_session.flush()
-        assert await is_track_hot(db_session, track) is True
+        assert await is_track_hot(db_session, track, platform) is True
 
     # 5. Проверяем старение по числу чистых сканов (лимит 2 чистых скана)
-    redis_decay_key = f"track:clean_scans:{track.id}"
+    redis_decay_key = f"hot_decay:{track.id}:{platform}"
     await redis_client.delete(redis_decay_key)
 
     with patch.object(settings, "hot_track_max_clean_scans", 2):
         # 1 чистый скан
         await redis_client.incr(redis_decay_key)
         # 1 скан < 2, трек все еще горячий
-        assert await is_track_hot(db_session, track) is True
+        assert await is_track_hot(db_session, track, platform) is True
 
         # 2 чистых скана
         await redis_client.incr(redis_decay_key)
         # 2 чистых скана >= 2, трек остывает!
-        assert await is_track_hot(db_session, track) is False
+        assert await is_track_hot(db_session, track, platform) is False
 
     await redis_client.delete(redis_decay_key)
 

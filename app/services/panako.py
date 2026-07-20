@@ -66,7 +66,7 @@ async def _run_panako_cmd(*args: str) -> tuple[int, str, str]:
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
     except asyncio.TimeoutError:
         proc.kill()
         return 1, "", "Panako command timed out"

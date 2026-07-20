@@ -40,10 +40,8 @@ async def get_monthly_spend() -> float:
 async def _increment_spend(amount_usd: float) -> float:
     """Increments the monthly USD spend in Redis."""
     key = _get_spend_key()
-    # We do a read-modify-write with a month-long expire TTL (31 days)
-    val = await get_monthly_spend()
-    new_val = val + amount_usd
-    await redis_client.set(key, str(new_val), ex=3600 * 24 * 31)
+    new_val = await redis_client.incrbyfloat(key, amount_usd)
+    await redis_client.expire(key, 3600 * 24 * 31)
     return new_val
 
 
@@ -54,7 +52,7 @@ async def evaluate_candidate(
     candidate_uploader: str,
     candidate_description: str,
     candidate_platform: str,
-    duration_diff_sec: float,
+    duration_diff_sec: Optional[float],
     score_before_ai: int,
     audio_matched: bool,
     audio_true_stretch: Optional[float] = None,
@@ -105,7 +103,7 @@ async def evaluate_candidate(
         f"- Название: {candidate_title}\n"
         f"- Платформа: {candidate_platform}\n"
         f"- Загрузил: {candidate_uploader}\n"
-        f"- Разница длительности: {duration_diff_sec} сек.\n"
+        f"- Разница длительности: {f'{duration_diff_sec} сек.' if duration_diff_sec is not None else 'Неизвестно'}\n"
         f"- Предварительный скор метаданных: {score_before_ai} / 100\n"
         f"- Совпадение по спектрограмме Panako: {'Да' if audio_matched else 'Нет'}\n"
         f"- Коэффициент растяжения звука: {f'{audio_true_stretch:.3f}x' if audio_true_stretch else 'N/A'}\n"

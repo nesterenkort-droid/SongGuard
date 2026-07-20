@@ -14,6 +14,7 @@
 import logging
 from datetime import UTC, datetime, timedelta
 
+import httpx
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,10 +28,23 @@ from app.services import budgeter, detection
 logger = logging.getLogger("trackguard.scheduler")
 
 
-async def is_track_hot(session: AsyncSession, track: Track) -> bool:
+class BudgetExhaustedError(Exception):
+    pass
+
+
+class PlatformAPIError(Exception):
+    pass
+
+
+
+async def is_track_hot(session: AsyncSession, track: Track, platform: str) -> bool:
     """Определяет, является ли трек 'горячим' (требующим ежедневного сканирования)."""
     if track.is_hot_pinned:
         return True
+
+    if track.release_date and (datetime.now(UTC).date() - track.release_date).days < 60:
+        return True
+
 
     # Ищем последнюю находку (активную или подтвержденную) для этого трека
     latest_finding = await session.scalar(
@@ -48,7 +62,7 @@ async def is_track_hot(session: AsyncSession, track: Track) -> bool:
         return False
 
     # Считываем количество успешных чистых сканирований из Redis
-    redis_decay_key = f"track:clean_scans:{track.id}"
+    redis_decay_key = f"hot_decay:{track.id}:{platform}"
     val = await redis_client.get(redis_decay_key)
     clean_scans = int(val) if val else 0
     # Если чистых сканирований больше или равно hot_track_max_clean_scans, трек остыл
@@ -73,11 +87,11 @@ async def populate_scan_jobs(session: AsyncSession) -> None:
     tracks = list(await session.scalars(select(Track)))
 
     for track in tracks:
-        is_hot = await is_track_hot(session, track)
-        priority = 20 if is_hot else 10
-        cutoff = hot_cutoff if is_hot else rotation_cutoff
-
         for platform in ["youtube", "spotify", "itunes"]:
+            is_hot = await is_track_hot(session, track, platform)
+            priority = 20 if is_hot else 10
+            cutoff = hot_cutoff if is_hot else rotation_cutoff
+
             # Проверяем, нужно ли сканировать
             last_scanned = getattr(
                 track, f"last_scanned_{'apple' if platform == 'itunes' else platform}"
@@ -102,6 +116,8 @@ async def populate_scan_jobs(session: AsyncSession) -> None:
                     )
                     session.add(job)
                 elif job.status in ["completed", "failed"]:
+                    if job.status == "completed":
+                        job.retry_count = 0
                     # Переводим старую задачу обратно в pending
                     job.status = "pending"
                     job.priority = priority
@@ -141,7 +157,7 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
     try:
         # Проверяем предохранитель
         if await budgeter.is_circuit_breaker_active(platform):
-            raise RuntimeError(f"Предохранитель активен для платформы {platform}")
+            raise BudgetExhaustedError(f"Предохранитель активен для платформы {platform}")
 
         # Выполняем сканирование в зависимости от платформы
         q = f"{track.title} {artist.name}"
@@ -149,7 +165,7 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
             # 1. Проверяем и списываем дневную квоту поиска YouTube
             # Лимитируем только реальный поиск (Priority 10, 20, 100)
             if not await budgeter.consume_youtube_search_quota(session):
-                raise RuntimeError("Превышена дневная квота поиска YouTube")
+                raise BudgetExhaustedError("Превышена дневная квота поиска YouTube")
 
             # 2. Делаем поиск трека
             raws.extend(await youtube_scan.search_tracks(q, limit=5))
@@ -167,14 +183,15 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
                     topic_raws = await youtube_scan.scan_playlist_items(
                         playlist_id, known_video_ids=set(), limit=15
                     )
-                    raws.extend(topic_raws)
-                    await redis_client.set(topic_lock_key, "1", ex=43200)  # 12 часов
+                    if topic_raws:
+                        raws.extend(topic_raws)
+                        await redis_client.set(topic_lock_key, "1", ex=43200)  # 12 часов
 
         elif platform == "spotify":
             # Соблюдаем token-bucket частоту запросов
             # Spotify: 30 запросов в минуту (емкость 5, восполнение 0.5 токенов в секунду)
             if not await budgeter.acquire_token(platform, capacity=5, refill_rate=0.5):
-                raise RuntimeError("Превышен лимит частоты запросов Spotify (token bucket)")
+                raise BudgetExhaustedError("Превышен лимит частоты запросов Spotify (token bucket)")
 
             raws.extend(await spotify_scan.search_tracks(q, limit=5))
             
@@ -200,7 +217,7 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
         elif platform == "itunes":
             # iTunes: 20 запросов в минуту (емкость 3, восполнение 0.33 токенов в секунду)
             if not await budgeter.acquire_token(platform, capacity=3, refill_rate=0.33):
-                raise RuntimeError("Превышен лимит частоты запросов iTunes (token bucket)")
+                raise BudgetExhaustedError("Превышен лимит частоты запросов iTunes (token bucket)")
 
             raws.extend(await itunes_scan.search_tracks(q, limit=5))
 
@@ -227,7 +244,7 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
         summary = await detection.ingest_candidates(session, artist, raws)
 
         # Обновляем счетчик чистых сканирований в Redis для старения (decay)
-        redis_decay_key = f"track:clean_scans:{track.id}"
+        redis_decay_key = f"hot_decay:{track.id}:{platform}"
         if summary.findings_created > 0:
             await redis_client.set(redis_decay_key, "0")
         else:
@@ -257,15 +274,20 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
             platform,
             track.title,
         )
-        job.status = "failed"
+        job.retry_count = getattr(job, "retry_count", 0) + 1
+        if job.retry_count >= 3:
+            job.status = "abandoned"
+        else:
+            job.status = "failed"
         job.outcome = str(e)[:500]
         
         # Если это ошибка превышения квот или лимитов - триггерим предохранитель
-        if "429" in str(e) or "quota" in str(e).lower() or "limit" in str(e).lower():
+        if isinstance(e, (httpx.HTTPStatusError, PlatformAPIError)):
             await budgeter.trip_circuit_breaker(platform)
 
     finally:
-        await redis_client.delete(lock_key)
+        if acquired:
+            await redis_client.delete(lock_key)
         await session.commit()
 
 
