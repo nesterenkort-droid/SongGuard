@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import delete, select
 
 from app.db import SessionLocal
-from app.models import Artist, Finding, PlatformCandidate, Track, ScanJob
+from app.models import Artist, Finding, PlatformCandidate, ScanJob, Track
 from app.redis_client import redis_client
-from app.services import panako, detection, ai_judge
+from app.services import ai_judge, detection, panako
 from tests.test_panako_audio import _generate_beep_audio
 
 
@@ -100,7 +100,9 @@ async def main():
                 return True
 
             with patch("app.services.detection.download_youtube_audio", mock_download_yt):
-                summary = await detection.ingest_candidates(session, artist, [raw_youtube], download_covers=False)
+                await detection.ingest_candidates(
+                    session, artist, [raw_youtube], download_covers=False
+                )
 
             # 5. Проверяем результаты детекции в БД
             await session.commit()
@@ -157,9 +159,14 @@ async def main():
                 return False
 
             with patch("app.services.detection.download_preview_audio", mock_download_preview):
-                with patch("app.services.detection.evaluate_candidate", AsyncMock(return_value=mock_llm_response)) as mock_ai:
+                with patch(
+                    "app.services.detection.evaluate_candidate",
+                    AsyncMock(return_value=mock_llm_response),
+                ) as mock_ai:
                     with patch.object(ai_judge.settings, "anthropic_api_key", "test-key"):
-                        summary_mid = await detection.ingest_candidates(session, artist, [raw_mid], download_covers=False)
+                        await detection.ingest_candidates(
+                            session, artist, [raw_mid], download_covers=False
+                        )
                         # Проверяем, что ИИ-судья был вызван
                         assert mock_ai.call_count == 1
                         print("🤖 ИИ-судья был успешно вызван для кандидата.")

@@ -1,9 +1,11 @@
-import pytest
-import httpx
 from unittest.mock import AsyncMock, patch
-from app.services import ai_judge
+
+import httpx
+import pytest
+
 from app.config import settings
 from app.redis_client import redis_client
+from app.services import ai_judge
 
 pytestmark = pytest.mark.asyncio
 
@@ -51,7 +53,11 @@ async def test_ai_judge_mock_response():
     mock_response = {
         "content": [
             {
-                "text": '{"verdict": "pirate", "confidence": 95, "reasoning_ru": "Название совпадает, описание содержит Provided to YouTube by DistroKid."}'
+                "text": (
+                    '{"verdict": "pirate", "confidence": 95, '
+                    '"reasoning_ru": "Название совпадает, описание содержит '
+                    'Provided to YouTube by DistroKid."}'
+                )
             }
         ],
         "usage": {

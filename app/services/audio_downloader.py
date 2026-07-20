@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import tempfile
+
 import httpx
 import yt_dlp
 from yt_dlp.utils import download_range_func
@@ -56,7 +57,10 @@ async def download_preview_audio(url: str, dest_path: str) -> bool:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(url, follow_redirects=True)
                 if response.status_code != 200:
-                    logger.error(f"Failed to download preview from {url}, status code: {response.status_code}")
+                    logger.error(
+                        "Failed to download preview from %s, status code: %s",
+                        url, response.status_code,
+                    )
                     return False
 
                 with open(temp_file, "wb") as f:

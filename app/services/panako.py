@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import re
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +13,10 @@ DB_DIR = "/data/panako_dbs"
 
 class MatchResult(NamedTuple):
     matched: bool
-    track_id: Optional[int] = None
-    true_stretch: Optional[float] = None
-    score: Optional[int] = None
-    matched_path: Optional[str] = None
+    track_id: int | None = None
+    true_stretch: float | None = None
+    score: int | None = None
+    matched_path: str | None = None
 
 
 def setup_panako_dir():
@@ -67,10 +67,14 @@ async def _run_panako_cmd(*args: str) -> tuple[int, str, str]:
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         return 1, "", "Panako command timed out"
-    return proc.returncode, stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
+    return (
+        proc.returncode,
+        stdout.decode("utf-8", errors="replace"),
+        stderr.decode("utf-8", errors="replace"),
+    )
 
 
 async def store_reference(track_id: int, original_file_path: str) -> bool:
@@ -208,8 +212,10 @@ async def query_candidate(candidate_file_path: str) -> MatchResult:
                 matched_path=match_path,
             )
         # Fallback when filename pattern is unexpected
-        logger.info(f"Audio match found (unparsed path): {match_path}, score: {score}")
-        return MatchResult(matched=True, track_id=None, true_stretch=None, score=score, matched_path=match_path)
+        logger.info("Audio match found (unparsed path): %s, score: %s", match_path, score)
+        return MatchResult(
+            matched=True, track_id=None, true_stretch=None, score=score, matched_path=match_path
+        )
     # No match found
     return MatchResult(matched=False)
 

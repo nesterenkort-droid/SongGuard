@@ -1,26 +1,29 @@
-import asyncio
+import math
 import os
 import shutil
+import struct
 import tempfile
-import pytest
-from app.services import panako, audio_downloader
+import wave
 
-# Skip tests if ffmpeg or JRE is not available on host (but we run inside Docker where it is guaranteed)
+import pytest
+
+from app.services import audio_downloader, panako
+
+# Skipped implicitly if ffmpeg/JRE are missing; guaranteed present inside Docker.
 pytestmark = pytest.mark.asyncio
 
 
-import math
-import struct
-import wave
-
 async def _generate_beep_audio(dest_path: str, duration_sec: int = 15, speed: float = 1.0):
     """Synthesizes a rich arpeggio melody with frequency sweeps and decay envelopes.
-    
+
     This ensures plenty of spectrotemporal peaks and transient onsets for Panako's indexer.
     """
     sample_rate = 16000
     num_samples = int(duration_sec * sample_rate)
-    notes = [220.0, 275.0, 330.0, 440.0, 550.0, 660.0, 880.0, 1100.0, 660.0, 550.0, 440.0, 330.0, 275.0, 220.0]
+    notes = [
+        220.0, 275.0, 330.0, 440.0, 550.0, 660.0, 880.0,
+        1100.0, 660.0, 550.0, 440.0, 330.0, 275.0, 220.0,
+    ]
     
     original_samples = []
     note_duration_samples = int(0.5 * sample_rate)

@@ -1,8 +1,10 @@
 import json
 import logging
 from datetime import datetime
-from typing import Any, NamedTuple, Optional
+from typing import NamedTuple
+
 import httpx
+
 from app.config import settings
 from app.redis_client import redis_client
 
@@ -52,14 +54,15 @@ async def evaluate_candidate(
     candidate_uploader: str,
     candidate_description: str,
     candidate_platform: str,
-    duration_diff_sec: Optional[float],
+    duration_diff_sec: float | None,
     score_before_ai: int,
     audio_matched: bool,
-    audio_true_stretch: Optional[float] = None,
+    audio_true_stretch: float | None = None,
 ) -> JudgeVerdict:
-    """Evaluates a suspicious candidate using Claude API to determine if it is a piracy copy or a remix.
+    """Evaluate a suspicious candidate via Claude to decide piracy vs. remix vs. safe.
 
-    Applies a strict monthly budget check. Returns a skipped verdict if cap is reached or API key is missing.
+    Applies a strict monthly budget check; returns a skipped verdict if the cap is
+    reached or no API key is configured.
     """
     # 1. Check API Key
     if not settings.anthropic_api_key:
@@ -73,19 +76,28 @@ async def evaluate_candidate(
     # 2. Check Budget Cap
     current_spend = await get_monthly_spend()
     if current_spend >= settings.ai_judge_monthly_budget_usd:
-        logger.warning(f"AI Judge monthly budget cap reached ({current_spend:.4f}$ >= {settings.ai_judge_monthly_budget_usd}$). Skipping.")
+        logger.warning(
+            "AI Judge monthly budget cap reached (%.4f$ >= %s$). Skipping.",
+            current_spend, settings.ai_judge_monthly_budget_usd,
+        )
         return JudgeVerdict(
             verdict="skipped",
             confidence=0,
-            reasoning_ru="Превышен месячный лимит расходов на ИИ-судью. Находка отправлена на ручную проверку.",
+            reasoning_ru=(
+                "Превышен месячный лимит расходов на ИИ-судью. "
+                "Находка отправлена на ручную проверку."
+            ),
         )
 
     # 3. Formulate Prompt
     system_prompt = (
         "Ты — ИИ-судья в системе обнаружения музыкального пиратства TrackGuard.\n"
-        "Твоя задача: проанализировать метаданные оригинального трека и найденного подозрительного кандидата и определить, является ли кандидат:\n"
-        "1. \"pirate\" — пиратской копией (замедленный/ускоренный slowed/sped-up рендер, прямой перезалив, гомоглифы в названии).\n"
-        "2. \"remix\" — неофициальным ремиксом, кавером или авторской работой, вдохновленной оригиналом (требует ручной оценки).\n"
+        "Твоя задача: проанализировать метаданные оригинального трека и найденного "
+        "подозрительного кандидата и определить, является ли кандидат:\n"
+        "1. \"pirate\" — пиратской копией (замедленный/ускоренный slowed/sped-up "
+        "рендер, прямой перезалив, гомоглифы в названии).\n"
+        "2. \"remix\" — неофициальным ремиксом, кавером или авторской работой, "
+        "вдохновленной оригиналом (требует ручной оценки).\n"
         "3. \"safe\" — полностью легальной или не связанной с оригиналом копией.\n\n"
         "Выведи результат строго в формате JSON со следующими полями:\n"
         "{\n"
@@ -103,10 +115,12 @@ async def evaluate_candidate(
         f"- Название: {candidate_title}\n"
         f"- Платформа: {candidate_platform}\n"
         f"- Загрузил: {candidate_uploader}\n"
-        f"- Разница длительности: {f'{duration_diff_sec} сек.' if duration_diff_sec is not None else 'Неизвестно'}\n"
+        f"- Разница длительности: "
+        f"{f'{duration_diff_sec} сек.' if duration_diff_sec is not None else 'Неизвестно'}\n"
         f"- Предварительный скор метаданных: {score_before_ai} / 100\n"
         f"- Совпадение по спектрограмме Panako: {'Да' if audio_matched else 'Нет'}\n"
-        f"- Коэффициент растяжения звука: {f'{audio_true_stretch:.3f}x' if audio_true_stretch else 'N/A'}\n"
+        f"- Коэффициент растяжения звука: "
+        f"{f'{audio_true_stretch:.3f}x' if audio_true_stretch else 'N/A'}\n"
         f"- Описание релиза: {candidate_description[:600]}\n"
     )
 
@@ -125,13 +139,21 @@ async def evaluate_candidate(
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=body)
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages", headers=headers, json=body
+            )
             if response.status_code != 200:
-                logger.error(f"Claude API request failed with status {response.status_code}: {response.text}")
+                logger.error(
+                    "Claude API request failed with status %s: %s",
+                    response.status_code, response.text,
+                )
                 return JudgeVerdict(
                     verdict="skipped",
                     confidence=0,
-                    reasoning_ru="Запрос к Claude API завершился ошибкой. Находка отправлена на ручную проверку.",
+                    reasoning_ru=(
+                        "Запрос к Claude API завершился ошибкой. "
+                        "Находка отправлена на ручную проверку."
+                    ),
                 )
 
             res_json = response.json()
@@ -141,7 +163,10 @@ async def evaluate_candidate(
             output_tokens = usage.get("output_tokens", 0)
 
             # Calculate cost
-            cost = (input_tokens * CLAUDE_INPUT_COST_PER_TOKEN) + (output_tokens * CLAUDE_OUTPUT_COST_PER_TOKEN)
+            cost = (
+                input_tokens * CLAUDE_INPUT_COST_PER_TOKEN
+                + output_tokens * CLAUDE_OUTPUT_COST_PER_TOKEN
+            )
             await _increment_spend(cost)
 
             # Parse JSON response from Claude
@@ -154,9 +179,11 @@ async def evaluate_candidate(
             )
 
     except Exception as e:
-        logger.error(f"Error executing Claude AI Judge: {e}")
+        logger.error("Error executing Claude AI Judge: %s", e)
         return JudgeVerdict(
             verdict="skipped",
             confidence=0,
-            reasoning_ru=f"Исключение при работе ИИ-судьи: {e}. Находка отправлена на ручную проверку.",
+            reasoning_ru=(
+                f"Исключение при работе ИИ-судьи: {e}. Находка отправлена на ручную проверку."
+            ),
         )

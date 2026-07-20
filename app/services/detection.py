@@ -14,6 +14,8 @@ Findings are per-track, candidates are global (PLAN.md §6): a candidate scored 
 several of our tracks yields several findings, but only one candidate row.
 """
 
+import os
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -34,6 +36,7 @@ from app.models import (
     STATUS_DETECTED,
     STATUS_DISMISSED,
     STATUS_PENDING_REVIEW,
+    STATUS_REMIX_REVIEW,
     STATUS_TOLERATED,
     WL_CHANNEL,
     WL_ISRC,
@@ -51,13 +54,11 @@ from app.models import (
 )
 from app.scanners import itunes_scan, spotify_scan, youtube_scan
 from app.scanners.base import RawCandidate
-import os
-import tempfile
 from app.services import audit, images, notify
-from app.services.normalize import detect_variant, normalize_title
-from app.services.panako import query_candidate, ORIGINALS_DIR
-from app.services.audio_downloader import download_youtube_audio, download_preview_audio
 from app.services.ai_judge import evaluate_candidate
+from app.services.audio_downloader import download_preview_audio, download_youtube_audio
+from app.services.normalize import detect_variant, normalize_title
+from app.services.panako import ORIGINALS_DIR, query_candidate
 from app.services.scoring import (
     BAND_LOW,
     CandidateFacts,
@@ -370,10 +371,14 @@ async def ingest_candidates(
             for track, result in _best_results(cand_facts, track_pairs, ctx):
                 # 1. Check if we should/can run audio matching (Panako)
                 audio_match_dict = None
-                original_exists = os.path.exists(os.path.join(ORIGINALS_DIR, f"{track.id}_1.00.wav"))
+                original_exists = os.path.exists(
+                    os.path.join(ORIGINALS_DIR, f"{track.id}_1.00.wav")
+                )
 
                 if original_exists and result.band in ["mid", "high"]:
-                    temp_wav = os.path.join(tempfile.gettempdir(), f"query_{track.id}_{cand.id}.wav")
+                    temp_wav = os.path.join(
+                        tempfile.gettempdir(), f"query_{track.id}_{cand.id}.wav"
+                    )
                     download_success = False
 
                     if cand.platform == "youtube" and cand.url:
@@ -416,10 +421,16 @@ async def ingest_candidates(
                         candidate_uploader=cand.uploader or "Unknown",
                         candidate_description=cand.description_raw or "",
                         candidate_platform=cand.platform,
-                        duration_diff_sec=abs(cand.duration_ms - track.duration_ms) / 1000.0 if cand.duration_ms is not None and track.duration_ms is not None else None,
+                        duration_diff_sec=(
+                            abs(cand.duration_ms - track.duration_ms) / 1000.0
+                            if cand.duration_ms is not None and track.duration_ms is not None
+                            else None
+                        ),
                         score_before_ai=result.score,
                         audio_matched=bool(audio_match_dict and audio_match_dict.get("matched")),
-                        audio_true_stretch=audio_match_dict.get("true_stretch") if audio_match_dict else None,
+                        audio_true_stretch=(
+                            audio_match_dict.get("true_stretch") if audio_match_dict else None
+                        ),
                     )
                     llm_dict = {
                         "verdict": verdict.verdict,
