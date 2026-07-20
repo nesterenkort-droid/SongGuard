@@ -24,7 +24,10 @@ from app.models import (
     KIND_ADMIN_ALERT,
     OUTCOME_REMOVED,
     OUTCOME_STILL_ALIVE,
+    STATUS_DETECTED,
+    STATUS_PENDING_REVIEW,
     STATUS_REAPPEARED,
+    STATUS_REMIX_REVIEW,
     STATUS_REMOVED,
     STATUS_SENT,
     STATUS_STILL_ALIVE,
@@ -40,8 +43,14 @@ from app.services import liveness
 
 logger = logging.getLogger("trackguard.recheck")
 
-# Recheck a finding at most once a day — no point hammering the platform hourly.
-RECHECK_STATUSES = frozenset({STATUS_SENT, STATUS_STILL_ALIVE})
+# Recheck every OPEN finding daily — not just those we've already sent a packet for.
+# This also catches candidates that are already dead when first detected (taken down
+# by someone else, channel deleted, etc.) so they don't sit in the review queue as
+# active threats — they auto-move to "removed". Cheap: liveness is videos.list (1 quota
+# unit), not a search (100).
+RECHECK_STATUSES = frozenset(
+    {STATUS_DETECTED, STATUS_PENDING_REVIEW, STATUS_REMIX_REVIEW, STATUS_SENT, STATUS_STILL_ALIVE}
+)
 
 
 async def recheck_finding(session: AsyncSession, finding: Finding) -> str | None:
@@ -62,9 +71,11 @@ async def recheck_finding(session: AsyncSession, finding: Finding) -> str | None
 
     if not alive:
         finding.status = STATUS_REMOVED
+        # Only celebrate a takedown we actually pursued. A candidate that was already
+        # dead when detected (never sent) just moves to "removed" quietly.
         if packet is not None:
             packet.outcome = OUTCOME_REMOVED
-        await _notify_removed(session, finding, cand)
+            await _notify_removed(session, finding, cand)
         return STATUS_REMOVED
 
     if finding.status == STATUS_SENT:
