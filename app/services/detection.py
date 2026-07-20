@@ -171,6 +171,14 @@ def _as_dt(value) -> datetime | None:
     return None
 
 
+def _clip(value: str | None, n: int) -> str | None:
+    """Trim a string to the DB column width. YouTube descriptions/titles can exceed
+    the varchar limits and would otherwise abort the whole ingest transaction."""
+    if isinstance(value, str) and len(value) > n:
+        return value[:n]
+    return value
+
+
 async def upsert_candidate(session: AsyncSession, raw: RawCandidate) -> PlatformCandidate:
     """Insert or refresh the single global row for (platform, native_id)."""
     cand = await session.scalar(
@@ -183,17 +191,17 @@ async def upsert_candidate(session: AsyncSession, raw: RawCandidate) -> Platform
         cand = PlatformCandidate(platform=raw.platform, native_id=raw.native_id)
         session.add(cand)
 
-    cand.title = raw.title
-    cand.normalized_title = normalize_title(raw.title)
-    cand.url = raw.url or cand.url
-    cand.uploader = raw.uploader or cand.uploader
-    cand.description_raw = raw.description_raw or cand.description_raw
-    cand.parsed_provider = raw.parsed_provider or cand.parsed_provider
-    cand.parsed_plabel = raw.parsed_plabel or cand.parsed_plabel
+    cand.title = _clip(raw.title, 512)
+    cand.normalized_title = _clip(normalize_title(raw.title), 512)
+    cand.url = _clip(raw.url, 1024) or cand.url
+    cand.uploader = _clip(raw.uploader, 512) or cand.uploader
+    cand.description_raw = _clip(raw.description_raw, 4096) or cand.description_raw
+    cand.parsed_provider = _clip(raw.parsed_provider, 255) or cand.parsed_provider
+    cand.parsed_plabel = _clip(raw.parsed_plabel, 255) or cand.parsed_plabel
     cand.isrc = raw.isrc or cand.isrc
     cand.published_at = _as_dt(raw.published_at) or cand.published_at
     cand.duration_ms = raw.duration_ms or cand.duration_ms
-    cand.thumb_url = raw.thumb_url or cand.thumb_url
+    cand.thumb_url = _clip(raw.thumb_url, 1024) or cand.thumb_url
     if raw.licensed_content is not None:
         cand.licensed_content = raw.licensed_content
     if raw.raw_json:
