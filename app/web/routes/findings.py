@@ -5,6 +5,8 @@ shows its explainable signal breakdown and can be confirmed / dismissed / tolera
 or turned into a whitelist rule in one click. The scan button enqueues an arq job.
 """
 
+from urllib.parse import quote
+
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import APIRouter, Depends, Form, Request
@@ -17,19 +19,26 @@ from app.config import settings
 from app.db import get_session
 from app.models import (
     STATUS_CONFIRMED,
+    STATUS_COUNTER_NOTICED,
     STATUS_DETECTED,
     STATUS_DISMISSED,
+    STATUS_PACKET_READY,
     STATUS_PENDING_REVIEW,
+    STATUS_REAPPEARED,
     STATUS_REMIX_REVIEW,
+    STATUS_REMOVED,
+    STATUS_SENT,
+    STATUS_STILL_ALIVE,
     STATUS_TOLERATED,
     Artist,
     ArtistMember,
     Finding,
     PlatformCandidate,
+    TakedownPacket,
     Track,
     User,
 )
-from app.services import catalog, detection
+from app.services import catalog, detection, takedown
 from app.web.templating import render
 
 router = APIRouter(prefix="/findings", tags=["findings"])
@@ -38,6 +47,11 @@ router = APIRouter(prefix="/findings", tags=["findings"])
 STATUS_GROUPS = {
     "open": [STATUS_DETECTED, STATUS_PENDING_REVIEW, STATUS_REMIX_REVIEW],
     "confirmed": [STATUS_CONFIRMED],
+    "packets": [
+        STATUS_PACKET_READY, STATUS_SENT, STATUS_STILL_ALIVE,
+        STATUS_COUNTER_NOTICED, STATUS_REAPPEARED,
+    ],
+    "removed": [STATUS_REMOVED],
     "dismissed": [STATUS_DISMISSED],
     "tolerated": [STATUS_TOLERATED],
 }
@@ -49,6 +63,12 @@ STATUS_LABELS = {
     STATUS_CONFIRMED: "пиратка",
     STATUS_DISMISSED: "ложное",
     STATUS_TOLERATED: "разрешено",
+    STATUS_PACKET_READY: "пакет готов",
+    STATUS_SENT: "отправлено",
+    STATUS_STILL_ALIVE: "всё ещё жива",
+    STATUS_COUNTER_NOTICED: "контр-нотис",
+    STATUS_REAPPEARED: "вернулась",
+    STATUS_REMOVED: "удалена 🎉",
 }
 
 
@@ -182,6 +202,76 @@ async def finding_whitelist(
     )
     await session.commit()
     return RedirectResponse("/findings", status_code=303)
+
+
+@router.get("/{finding_id}/packet")
+async def packet_page(
+    request: Request,
+    finding_id: int,
+    error: str | None = None,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+):
+    finding = await _load_finding_checked(session, user, finding_id)
+    if finding is None:
+        return render(request, "404.html", user=user, status_code=404)
+    ctx = await detection.get_finding_context(session, finding_id)
+    _finding, cand, track, artist = ctx
+    packets = list(
+        await session.scalars(
+            select(TakedownPacket)
+            .where(TakedownPacket.finding_id == finding_id)
+            .order_by(TakedownPacket.created_at.desc())
+        )
+    )
+    routes = takedown.available_routes(cand)
+    warning = await takedown.collab_warning(session, track)
+    return render(
+        request,
+        "packet.html",
+        {
+            "finding": finding, "cand": cand, "track": track, "artist": artist,
+            "packets": packets, "routes": routes, "route_labels": takedown.ROUTE_LABELS_RU,
+            "collab_warning": warning, "error": error,
+        },
+        user=user,
+    )
+
+
+@router.post("/{finding_id}/packet")
+async def packet_generate(
+    finding_id: int,
+    route: str = Form(...),
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+):
+    finding = await _load_finding_checked(session, user, finding_id)
+    if finding is None:
+        return RedirectResponse("/findings", status_code=303)
+    try:
+        await takedown.generate_packet(session, finding, route, actor_user=user)
+        await session.commit()
+    except (takedown.LegalFieldsMissing, takedown.RouteNotApplicable, ValueError) as exc:
+        return RedirectResponse(
+            f"/findings/{finding_id}/packet?error={quote(str(exc))}", status_code=303
+        )
+    return RedirectResponse(f"/findings/{finding_id}/packet", status_code=303)
+
+
+@router.post("/{finding_id}/packet/{packet_id}/sent")
+async def packet_mark_sent(
+    finding_id: int,
+    packet_id: int,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+):
+    finding = await _load_finding_checked(session, user, finding_id)
+    packet = await session.get(TakedownPacket, packet_id)
+    if finding is None or packet is None or packet.finding_id != finding_id:
+        return RedirectResponse("/findings", status_code=303)
+    await takedown.mark_sent(session, packet, actor_user_id=user.id)
+    await session.commit()
+    return RedirectResponse(f"/findings/{finding_id}/packet", status_code=303)
 
 
 @router.post("/scan")

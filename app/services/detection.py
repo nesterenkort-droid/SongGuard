@@ -54,7 +54,7 @@ from app.models import (
 )
 from app.scanners import itunes_scan, spotify_scan, youtube_scan
 from app.scanners.base import RawCandidate
-from app.services import audit, images, notify
+from app.services import audit, images, notify, takedown
 from app.services.ai_judge import evaluate_candidate
 from app.services.audio_downloader import download_preview_audio, download_youtube_audio
 from app.services.normalize import detect_variant, normalize_title
@@ -573,6 +573,7 @@ async def transition(
     )
     if new_status == STATUS_CONFIRMED:
         await _register_pirate_entity(session, finding, actor_user_id)
+        await takedown.capture_evidence(session, finding)
 
 
 async def _register_pirate_entity(

@@ -86,7 +86,7 @@
 
 <!-- Status tabs -->
 <div class="tabs tabs-boxed mb-4 w-fit">
-  {% for key, label in [('open','Новые'),('confirmed','Пиратки'),('tolerated','Разрешённые'),('dismissed','Ложные')] %}
+  {% for key, label in [('open','Новые'),('confirmed','Пиратки'),('packets','Пакеты'),('removed','Удалены 🎉'),('tolerated','Разрешённые'),('dismissed','Ложные')] %}
   <a class="tab {% if status == key %}tab-active{% endif %}" href="/findings?status={{ key }}">{{ label }}</a>
   {% endfor %}
 </div>
@@ -176,6 +176,9 @@
               <input type="hidden" name="entry_type" value="channel_id" />
               <button class="btn btn-xs btn-outline" title="Больше не флажить этот канал">＋ канал в белый список</button>
             </form>
+            {% endif %}
+            {% if finding.status not in ('detected', 'pending_review', 'remix_review', 'dismissed', 'tolerated') %}
+            <a href="/findings/{{ finding.id }}/packet" class="btn btn-xs btn-outline">📄 Пакет жалобы</a>
             {% endif %}
           </div>
         </div>

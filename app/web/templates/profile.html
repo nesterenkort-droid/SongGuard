@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Профиль — TrackGuard{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Юридические данные</h1>
+
+<div class="card bg-base-100 shadow-sm max-w-xl">
+  <div class="card-body">
+    <p class="text-sm text-base-content/70 mb-2">
+      Эти данные подставляются в пакеты жалоб (DMCA-подобные уведомления) как данные
+      заявителя. Без них пакет жалобы сформировать нельзя — площадки и дистрибьюторы
+      не примут жалобу без реального имени и контактов правообладателя.
+    </p>
+    {% if request.query_params.get('saved') %}
+    <div class="alert alert-success text-sm mb-2">Сохранено.</div>
+    {% endif %}
+    <form method="post" action="/profile" class="flex flex-col gap-3">
+      <label class="form-control">
+        <span class="label-text text-xs">Полное имя / название компании</span>
+        <input name="legal_name" value="{{ user.legal_name or '' }}"
+               class="input input-bordered" placeholder="Иван Иванов / 0to8 LLC" />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Почтовый адрес</span>
+        <input name="legal_address" value="{{ user.legal_address or '' }}"
+               class="input input-bordered" placeholder="Город, улица, дом" />
+      </label>
+      <label class="form-control">
+        <span class="label-text text-xs">Email для ответов площадок</span>
+        <input name="legal_email" type="email" value="{{ user.legal_email or '' }}"
+               class="input input-bordered" placeholder="you@example.com" />
+      </label>
+      <button class="btn btn-primary mt-2 self-start">Сохранить</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

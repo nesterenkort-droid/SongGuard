@@ -116,6 +116,10 @@ async def _outbox_flush_loop(bot) -> None:
                             if not ok:
                                 rows[0].status = OUTBOX_FAILED
                                 rows[0].last_error = "находка удалена"
+                        elif len(rows) == 1 and (rows[0].data or {}).get("text"):
+                            # Plain-text alerts (recheck "removed!" pings, follow-up
+                            # reminders) — no finding card to render, just the text.
+                            await bot.send_message(user.tg_user_id, rows[0].data["text"])
                         else:
                             await _send_digest(bot, user.tg_user_id, rows, session)
                         for row in rows:
@@ -141,15 +145,18 @@ async def _outbox_flush_loop(bot) -> None:
 async def _send_digest(bot, chat_id: int, rows, session) -> None:
     from app.services import detection
 
-    lines = [f"📬 Дайджест: {len(rows)} находок"]
+    lines = [f"📬 Дайджест: {len(rows)} уведомлений"]
     for row in rows:
-        if not row.finding_id:
-            continue
-        ctx = await detection.get_finding_context(session, row.finding_id)
-        if ctx is None:
-            continue
-        finding, cand, track, _artist = ctx
-        lines.append(f"• «{cand.title}» → «{track.title}» — score {finding.score} ({finding.band})")
+        if row.finding_id:
+            ctx = await detection.get_finding_context(session, row.finding_id)
+            if ctx is None:
+                continue
+            finding, cand, track, _artist = ctx
+            lines.append(
+                f"• «{cand.title}» → «{track.title}» — score {finding.score} ({finding.band})"
+            )
+        elif (row.data or {}).get("text"):
+            lines.append(f"• {row.data['text']}")
     lines.append(f"\nПодробности: {settings.base_url}/findings")
     await bot.send_message(chat_id, "\n".join(lines))
 

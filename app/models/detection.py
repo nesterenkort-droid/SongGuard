@@ -14,6 +14,7 @@ neither debug nor later tune the scorer (PLAN.md §6, §7 Ярус 2/3).
 from datetime import date, datetime
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -37,18 +38,32 @@ BAND_HIGH = "high"  # >=70 → finding straight away
 BAND_MID = "mid"  # 40..69 → audio/LLM check queue (M5)
 BAND_LOW = "low"  # <40 → logged only
 
-# --- Finding lifecycle (M2 subset of PLAN.md §6). Later milestones add the
-# packet/removed/reappeared tail. `tolerated` != `dismissed`: it suppresses repeat
-# flags for a fan channel we allow, but the candidate stays visible.
+# --- Finding lifecycle (PLAN.md §6):
+# detected -> scored -> pending_review | remix_review -> confirmed | dismissed |
+# tolerated -> packet_ready -> sent -> removed | still_alive | counter_noticed |
+# reappeared. `tolerated` != `dismissed`: it suppresses repeat flags for a fan
+# channel we allow, but the candidate stays visible. The M6 tail (packet_ready..
+# reappeared) only applies after a human confirms — everything before that is M2/M5.
 STATUS_DETECTED = "detected"
 STATUS_PENDING_REVIEW = "pending_review"
 STATUS_REMIX_REVIEW = "remix_review"
 STATUS_CONFIRMED = "confirmed"
 STATUS_DISMISSED = "dismissed"
 STATUS_TOLERATED = "tolerated"
+STATUS_PACKET_READY = "packet_ready"
+STATUS_SENT = "sent"
+STATUS_REMOVED = "removed"
+STATUS_STILL_ALIVE = "still_alive"
+STATUS_COUNTER_NOTICED = "counter_noticed"
+STATUS_REAPPEARED = "reappeared"
 
-# Statuses that mean "already decided, don't surface as new work".
+# Statuses that mean "already decided, don't surface as new work" in the M2 feed.
 RESOLVED_STATUSES = frozenset({STATUS_CONFIRMED, STATUS_DISMISSED, STATUS_TOLERATED})
+# Statuses reachable only once a takedown packet exists for the finding.
+POST_PACKET_STATUSES = frozenset(
+    {STATUS_PACKET_READY, STATUS_SENT, STATUS_REMOVED, STATUS_STILL_ALIVE,
+     STATUS_COUNTER_NOTICED, STATUS_REAPPEARED}
+)
 
 # --- Whitelist entry types (PLAN.md §6). `own_label` declares a tenant's own
 # distributor/label strings so anything outside the list reads as foreign. ---
@@ -289,5 +304,76 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(String(255))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+# --- Takedown routes (PLAN.md §11). Distributor is listed first: a distributor
+# abuse report can kill the release on every platform at once and may nuke the
+# pirate's account, so it's the highest-leverage route when one applies. ---
+ROUTE_DISTRIBUTOR = "distributor_email"
+ROUTE_YOUTUBE = "yt_form"
+ROUTE_SPOTIFY = "spotify_form"
+ROUTE_APPLE = "apple_email"
+
+PACKET_DRAFT = "draft"
+PACKET_SENT = "sent"
+
+OUTCOME_REMOVED = "removed"
+OUTCOME_STILL_ALIVE = "still_alive"
+OUTCOME_COUNTER_NOTICED = "counter_noticed"
+
+
+class EvidenceArchive(Base):
+    """Snapshot taken the moment a finding is confirmed (PLAN.md §6, §11).
+
+    Once a pirate release is taken down there is nothing left to point at — this
+    freezes the candidate's API data, cover, and any audio/AI evidence as they stood
+    at confirmation time, independent of what happens to the live candidate row.
+    """
+
+    __tablename__ = "evidence_archive"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    finding_id: Mapped[int] = mapped_column(
+        ForeignKey("findings.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    candidate_snapshot: Mapped[dict] = mapped_column(JSONB)
+    cover_snapshot_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    audio_match_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    llm_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TakedownPacket(Base):
+    """A prepared (never auto-sent) complaint for one route (PLAN.md §11).
+
+    `body_en` is the complaint text itself (platforms/distributors expect English);
+    `note_ru` explains in Russian what it says and why, for a non-technical owner.
+    """
+
+    __tablename__ = "takedown_packets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    finding_id: Mapped[int] = mapped_column(
+        ForeignKey("findings.id", ondelete="CASCADE"), index=True
+    )
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence_archive.id"))
+    route: Mapped[str] = mapped_column(String(24), index=True)
+    body_en: Mapped[str] = mapped_column(String(8000))
+    note_ru: Mapped[str] = mapped_column(String(2000))
+    status: Mapped[str] = mapped_column(String(16), default=PACKET_DRAFT, index=True)
+    sent_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    follow_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    follow_up_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 

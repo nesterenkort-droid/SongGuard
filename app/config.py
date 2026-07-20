@@ -82,6 +82,17 @@ class Settings(BaseSettings):
     def cover_dir(self) -> str:
         return f"{self.data_dir}/covers"
 
+    @property
+    def evidence_dir(self) -> str:
+        # Separate from cover_dir: a frozen copy that survives the live cover being
+        # overwritten by a later rescan or deleted along with the pirate release.
+        return f"{self.data_dir}/evidence"
+
+    @property
+    def takedown_followup_days(self) -> int:
+        # No response 14 days after sending a complaint -> remind the owner (PLAN §11).
+        return 14
+
 
 @lru_cache
 def get_settings() -> Settings:

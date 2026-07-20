@@ -16,13 +16,21 @@
       {% if user %}
       <a class="btn btn-ghost btn-sm" href="/catalog">Каталог</a>
       <a class="btn btn-ghost btn-sm" href="/findings">Находки</a>
-      {% if user.is_admin %}<a class="btn btn-ghost btn-sm" href="/admin">Админка</a>{% endif %}
+      {% if user.is_admin %}
+      <a class="btn btn-ghost btn-sm" href="/quality">Качество</a>
+      <a class="btn btn-ghost btn-sm" href="/admin">Админка</a>
+      {% endif %}
       {% endif %}
     </div>
     <div class="flex-none gap-2">
       <span class="badge badge-outline">v{{ settings.app_version }}</span>
       {% if user %}
-        <span class="text-sm opacity-70">{{ user.display_name }}{% if user.is_admin %} · админ{% endif %}</span>
+        <a class="btn btn-ghost btn-sm" href="/profile" title="Юридические данные для жалоб">
+          {{ user.display_name }}{% if user.is_admin %} · админ{% endif %}
+          {% if not (user.legal_name and user.legal_address and user.legal_email) %}
+          <span class="badge badge-warning badge-xs ml-1">⚠</span>
+          {% endif %}
+        </a>
         <a class="btn btn-ghost btn-sm" href="/logout">Выйти</a>
       {% else %}
         <a class="btn btn-primary btn-sm" href="/login">Войти</a>

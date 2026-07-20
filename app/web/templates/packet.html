@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Пакет жалобы — TrackGuard{% endblock %}
+
+{% block content %}
+<a href="/findings?status=confirmed" class="text-sm link link-hover">← Находки</a>
+<h1 class="text-2xl font-bold mb-1">Пакет жалобы</h1>
+<p class="text-sm text-base-content/70 mb-4">
+  «{{ cand.title }}» ({{ cand.platform }}) → наш трек «{{ track.title }}» ({{ artist.name }})
+</p>
+
+{% if error %}
+<div class="alert alert-error text-sm mb-4">
+  {{ error }}
+  {% if 'юридические' in error %}
+  <a href="/profile" class="link font-medium">Заполнить в профиле →</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if collab_warning %}
+<div class="alert alert-warning text-sm mb-4 whitespace-pre-line">{{ collab_warning }}</div>
+{% endif %}
+
+{% if routes %}
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-base">Сформировать новый пакет</h2>
+    <form method="post" action="/findings/{{ finding.id }}/packet" class="flex gap-2 items-end flex-wrap">
+      <select name="route" class="select select-bordered select-sm">
+        {% for r in routes %}
+        <option value="{{ r }}">{{ route_labels[r] }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-primary">Сформировать</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info text-sm mb-6">
+  Для этой находки не определён ни один применимый маршрут (нет распознанного
+  дистрибьютора/лейбла и платформа неизвестна).
+</div>
+{% endif %}
+
+{% if packets %}
+<div class="flex flex-col gap-4">
+  {% for p in packets %}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body p-4">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="badge badge-outline">{{ route_labels.get(p.route, p.route) }}</span>
+        <span class="badge {% if p.status == 'sent' %}badge-success{% else %}badge-ghost{% endif %}">
+          {{ 'отправлен' if p.status == 'sent' else 'черновик' }}
+        </span>
+        {% if p.outcome %}<span class="badge badge-info">{{ p.outcome }}</span>{% endif %}
+      </div>
+
+      <div class="text-sm whitespace-pre-line mt-2 bg-base-200/50 rounded p-2">{{ p.note_ru }}</div>
+
+      <details class="mt-2">
+        <summary class="cursor-pointer text-sm link">Текст жалобы (EN, скопировать)</summary>
+        <textarea readonly class="textarea textarea-bordered w-full mt-2 text-xs font-mono" rows="14">{{ p.body_en }}</textarea>
+      </details>
+
+      {% if p.status != 'sent' %}
+      <form method="post" action="/findings/{{ finding.id }}/packet/{{ p.id }}/sent" class="mt-2">
+        <button class="btn btn-sm btn-outline">✅ Отправлено</button>
+      </form>
+      {% elif p.sent_at %}
+      <p class="text-xs text-base-content/50 mt-2">Отправлено {{ p.sent_at.strftime('%Y-%m-%d %H:%M') }}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Качество — TrackGuard{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Качество детекции</h1>
+
+<div class="card bg-base-100 shadow-sm mb-6">
+  <div class="card-body p-4">
+    <h2 class="card-title text-base">Точность по диапазонам скора</h2>
+    <p class="text-xs text-base-content/50 mb-2">
+      Точность = подтверждено / (подтверждено + отклонено как ложное). Показывает,
+      насколько можно доверять скору без ручной проверки.
+    </p>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead><tr><th>Диапазон</th><th>Всего</th><th>Подтверждено</th><th>Ложных</th><th>Точность</th></tr></thead>
+        <tbody>
+          {% for s in band_stats %}
+          <tr>
+            <td><span class="badge {% if s.band == 'high' %}badge-error{% elif s.band == 'mid' %}badge-warning{% else %}badge-ghost{% endif %}">{{ s.band }}</span></td>
+            <td>{{ s.total }}</td>
+            <td>{{ s.confirmed }}</td>
+            <td>{{ s.dismissed }}</td>
+            <td>{% if s.precision is not none %}{{ s.precision }}%{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-4">
+    <h2 class="card-title text-base">Пакеты жалоб</h2>
+    <div class="flex gap-6 mt-2">
+      <div><span class="text-2xl font-bold">{{ packet_total }}</span><span class="text-xs block text-base-content/60">сформировано</span></div>
+      <div><span class="text-2xl font-bold text-success">{{ packet_sent }}</span><span class="text-xs block text-base-content/60">отправлено</span></div>
+    </div>
+    {% if outcome_rows %}
+    <div class="flex gap-4 mt-4 flex-wrap">
+      {% for outcome, count in outcome_rows %}
+      <div class="badge badge-outline">{{ outcome }}: {{ count }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

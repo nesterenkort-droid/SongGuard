@@ -10,12 +10,24 @@ data at 64 bytes; finding ids are small ints, well within budget).
 from dataclasses import dataclass
 
 from app.config import settings
-from app.models import Finding, PlatformCandidate, Track
+from app.models import (
+    STATUS_DETECTED,
+    STATUS_PENDING_REVIEW,
+    STATUS_REMIX_REVIEW,
+    Finding,
+    PlatformCandidate,
+    Track,
+)
 
 ACTION_CONFIRM = "confirm"
 ACTION_DISMISS = "dismiss"
 ACTION_TOLERATE = "tolerate"
 ACTION_WHITELIST_CHANNEL = "wl"
+
+# Statuses where confirm/dismiss/tolerate are still meaningful actions.
+UNDECIDED_STATUSES = frozenset(
+    {STATUS_DETECTED, STATUS_PENDING_REVIEW, STATUS_REMIX_REVIEW}
+)
 
 STATUS_EMOJI = {
     "detected": "🆕",
@@ -24,6 +36,12 @@ STATUS_EMOJI = {
     "confirmed": "🚨",
     "dismissed": "✗",
     "tolerated": "🕊",
+    "packet_ready": "📄",
+    "sent": "📨",
+    "still_alive": "⏳",
+    "counter_noticed": "⚖️",
+    "reappeared": "🔁",
+    "removed": "🎉",
 }
 
 
@@ -69,13 +87,24 @@ def build_finding_text(
 
 
 def build_finding_buttons(finding: Finding) -> list[list[ButtonSpec]]:
-    row1 = [
-        ButtonSpec("✓ Пиратка", callback_data=callback_data(ACTION_CONFIRM, finding.id)),
-        ButtonSpec("✗ Ложное", callback_data=callback_data(ACTION_DISMISS, finding.id)),
-        ButtonSpec("🕊 Разрешить", callback_data=callback_data(ACTION_TOLERATE, finding.id)),
-    ]
-    row2 = [ButtonSpec("🌐 На сайте", url=f"{settings.base_url}/findings")]
-    return [row1, row2]
+    rows: list[list[ButtonSpec]] = []
+    if finding.status in UNDECIDED_STATUSES:
+        rows.append([
+            ButtonSpec("✓ Пиратка", callback_data=callback_data(ACTION_CONFIRM, finding.id)),
+            ButtonSpec("✗ Ложное", callback_data=callback_data(ACTION_DISMISS, finding.id)),
+            ButtonSpec("🕊 Разрешить", callback_data=callback_data(ACTION_TOLERATE, finding.id)),
+        ])
+    else:
+        # Confirmed or further along the takedown lifecycle: offer the packet page
+        # instead (drafting/sending a legal complaint stays on the web dashboard).
+        rows.append([
+            ButtonSpec(
+                "📄 Пакет жалобы",
+                url=f"{settings.base_url}/findings/{finding.id}/packet",
+            )
+        ])
+    rows.append([ButtonSpec("🌐 На сайте", url=f"{settings.base_url}/findings")])
+    return rows
 
 
 def build_finding_card(

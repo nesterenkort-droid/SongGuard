@@ -10,13 +10,14 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from app.config import settings
+from app.services.recheck import recheck_tick
 from app.services.scheduler import scheduler_tick
 from app.worker.tasks import scan_catalog, shutdown, startup, write_heartbeat
 
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [write_heartbeat, scan_catalog, scheduler_tick]
+    functions = [write_heartbeat, scan_catalog, scheduler_tick, recheck_tick]
     cron_jobs = [
         # Every minute at second 0.
         cron(write_heartbeat, second=0, run_at_startup=False),
@@ -26,6 +27,8 @@ class WorkerSettings:
             minute=set(range(0, 60, settings.scheduler_interval_minutes)),
             run_at_startup=True,
         ),
+        # Daily: liveness recheck of confirmed/sent findings + follow-up reminders.
+        cron(recheck_tick, hour=3, minute=0, run_at_startup=False),
     ]
     on_startup = startup
     on_shutdown = shutdown
