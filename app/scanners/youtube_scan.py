@@ -174,11 +174,107 @@ async def _fetch_video_details(
         raise YouTubeAPIError(str(e), e.response.status_code) from e
 
 
-async def search_tracks(query: str, limit: int = 10) -> list[RawCandidate]:
-    """Tier 1: Поиск треков на YouTube.
+def _candidate_from_details(vid: str, det: dict) -> RawCandidate:
+    """Build a RawCandidate from a `_fetch_video_details` entry (shared by all paths)."""
+    return RawCandidate(
+        platform=PLATFORM,
+        native_id=vid,
+        title=det["title"],
+        url=f"https://www.youtube.com/watch?v={vid}",
+        uploader=det["uploader"],
+        description_raw=det["description_raw"],
+        parsed_provider=det["parsed_provider"],
+        parsed_plabel=det["parsed_plabel"],
+        published_at=det["published_at"].date() if det["published_at"] else None,
+        duration_ms=det["duration_ms"],
+        thumb_url=det["thumb_url"],
+        cover_url=det["thumb_url"],
+        licensed_content=det.get("licensed_content"),
+        raw_json=det["raw_json"],
+    )
 
-    Расход квоты: 100 единиц (поиск) + 1 единица (детали).
+
+def _ytdlp_search_sync(query: str, limit: int) -> list[dict]:
+    """Blocking yt-dlp `ytsearch` — video ids + flat metadata, no API key, no quota."""
+    import yt_dlp
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,  # list results without fetching each video page
+        "skip_download": True,
+        "noplaylist": True,
+        "socket_timeout": 30,
+    }
+    out: list[dict] = []
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    for e in (info or {}).get("entries") or []:
+        if not e or not e.get("id"):
+            continue
+        dur = e.get("duration")
+        out.append(
+            {
+                "id": e["id"],
+                "title": e.get("title") or "",
+                "uploader": e.get("channel") or e.get("uploader") or "",
+                "duration_ms": int(dur * 1000) if dur else None,
+                "url": e.get("url") or f"https://www.youtube.com/watch?v={e['id']}",
+            }
+        )
+    return out
+
+
+async def _search_tracks_ytdlp(query: str, limit: int) -> list[RawCandidate] | None:
+    """yt-dlp search (quota-free) + cheap videos.list enrichment for full signals.
+
+    Returns None if yt-dlp itself fails (blocked/bot-check) so the caller can fall
+    back to the API. Enrichment keeps duration/licensedContent/regionRestriction so
+    the geo-block badge and provenance signals still work.
     """
+    import asyncio
+
+    try:
+        flat = await asyncio.to_thread(_ytdlp_search_sync, query, limit)
+    except Exception as e:  # noqa: BLE001 - bot-check / layout change -> fall back to API
+        logger.warning("yt-dlp YouTube-поиск не сработал (%s) — откат на API-ключ", e)
+        return None
+    if not flat:
+        return []
+
+    ids = [f["id"] for f in flat]
+    details: dict[str, dict] = {}
+    key = await _get_youtube_api_key()
+    if key:
+        try:
+            async with httpx.AsyncClient() as client:
+                details = await _fetch_video_details(client, ids, api_key=key)
+        except Exception as e:  # noqa: BLE001 - enrichment is best-effort
+            logger.warning("videos.list enrichment failed (%s) — using yt-dlp metadata", e)
+
+    fmap = {f["id"]: f for f in flat}
+    out: list[RawCandidate] = []
+    for vid in ids:
+        det = details.get(vid)
+        if det:
+            out.append(_candidate_from_details(vid, det))
+        else:
+            f = fmap[vid]
+            out.append(
+                RawCandidate(
+                    platform=PLATFORM,
+                    native_id=vid,
+                    title=f["title"],
+                    url=f["url"],
+                    uploader=f["uploader"],
+                    duration_ms=f["duration_ms"],
+                )
+            )
+    return out
+
+
+async def _search_tracks_api(query: str, limit: int) -> list[RawCandidate]:
+    """Tier 1: YouTube Data API search. Quota: 100 (search) + 1 (details)."""
     key = await _get_youtube_api_key()
     if not key:
         logger.warning("YouTube API key не настроен.")
@@ -208,33 +304,24 @@ async def search_tracks(query: str, limit: int = 10) -> list[RawCandidate]:
                 return []
 
             details = await _fetch_video_details(client, video_ids, api_key=key)
-
-            candidates = []
-            for vid in video_ids:
-                det = details.get(vid)
-                if not det:
-                    continue
-                candidates.append(
-                    RawCandidate(
-                        platform=PLATFORM,
-                        native_id=vid,
-                        title=det["title"],
-                        url=f"https://www.youtube.com/watch?v={vid}",
-                        uploader=det["uploader"],
-                        description_raw=det["description_raw"],
-                        parsed_provider=det["parsed_provider"],
-                        parsed_plabel=det["parsed_plabel"],
-                        published_at=det["published_at"].date() if det["published_at"] else None,
-                        duration_ms=det["duration_ms"],
-                        thumb_url=det["thumb_url"],
-                        cover_url=det["thumb_url"],
-                        licensed_content=det.get("licensed_content"),
-                        raw_json=det["raw_json"],
-                    )
-                )
-            return candidates
+            return [
+                _candidate_from_details(vid, details[vid])
+                for vid in video_ids
+                if vid in details
+            ]
         except httpx.HTTPStatusError as e:
             raise YouTubeAPIError(str(e), e.response.status_code) from e
+
+
+async def search_tracks(query: str, limit: int = 10) -> list[RawCandidate]:
+    """Tier 1 YouTube search. Backend chosen by settings.youtube_search_backend:
+    "ytdlp" (no quota, auto-falls back to API on failure) or "api"."""
+    if settings.youtube_search_backend == "ytdlp":
+        cands = await _search_tracks_ytdlp(query, limit)
+        if cands is not None:
+            return cands
+        # yt-dlp failed — fall back to the API path.
+    return await _search_tracks_api(query, limit)
 
 
 async def scan_playlist_items(

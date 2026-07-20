@@ -166,10 +166,11 @@ async def execute_single_job(session: AsyncSession, job: ScanJob) -> None:
                 logger.info("YouTube-поиск отключён (YOUTUBE_SEARCH_ENABLED=false) — пропуск")
                 raws = []
             else:
-                # 1. Проверяем и списываем дневную квоту поиска YouTube
-                # Лимитируем только реальный поиск (Priority 10, 20, 100)
-                if not await budgeter.consume_youtube_search_quota(session):
-                    raise BudgetExhaustedError("Превышена дневная квота поиска YouTube")
+                # 1. Дневная квота поиска списывается только для API-бэкенда
+                # (search.list = 100 единиц). yt-dlp-поиск квоту не тратит.
+                if settings.youtube_search_backend == "api":
+                    if not await budgeter.consume_youtube_search_quota(session):
+                        raise BudgetExhaustedError("Превышена дневная квота поиска YouTube")
 
                 # 2. Делаем поиск трека
                 raws.extend(await youtube_scan.search_tracks(q, limit=5))

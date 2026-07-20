@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # Master switch for YouTube search scanning (like spotify_enabled). Turn off to
     # stop the scheduler burning search quota; a targeted manual scan can still run.
     youtube_search_enabled: bool = True
+    # Search backend: "api" (search.list, 100 quota units/search) or "ytdlp" (yt-dlp
+    # ytsearch — no quota, no key; enriched via cheap videos.list, 1 unit). "ytdlp"
+    # falls back to "api" automatically if yt-dlp is blocked/errors.
+    youtube_search_backend: str = "api"
     youtube_api_key: str | None = None
     # Google's real cap is ~10 000 units/day per key (search costs 100 units each).
     # With 2 rotated keys that's ~200 searches/day of real headroom; 180 leaves a
