@@ -78,6 +78,11 @@ services:
   worker:
     <<: *app
     command: arq app.worker.main.WorkerSettings
+    # Panako (JVM) runs inside this container — cap memory so a runaway audio-match
+    # job can't starve the host, and always restart it (PLAN.md §12): scans/recheck/
+    # retention are all time-based, a worker that stays down silently breaks them.
+    restart: always
+    mem_limit: 1500m
     volumes:
       - appdata:/data
     depends_on:

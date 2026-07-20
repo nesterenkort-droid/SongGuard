@@ -7,6 +7,7 @@ the whole app is down. Worker and bot are reported via Redis heartbeats — if t
 go stale we degrade but stay up.
 """
 
+import shutil
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
@@ -15,6 +16,8 @@ from sqlalchemy import text
 from app.config import settings
 from app.db import engine
 from app.redis_client import redis_client
+
+DISK_WARN_PERCENT = 80
 
 # Status values, ordered by severity.
 OK = "ok"
@@ -72,6 +75,47 @@ async def _heartbeat_component(name: str, label: str, key: str) -> Component:
     return Component(name, label, WARN, f"молчит {int(age)} с", False)
 
 
+def check_disk() -> Component:
+    """PLAN.md §12: alert at 80% disk usage (audio/covers/evidence live under
+    settings.data_dir, the volume most likely to fill up over time)."""
+    try:
+        usage = shutil.disk_usage(settings.data_dir)
+    except FileNotFoundError:
+        # data_dir doesn't exist yet (e.g. fresh checkout without a running
+        # container) — not an operational problem worth alerting on.
+        return Component("disk", "Диск", OK, "точка монтирования ещё не создана", False)
+    except Exception as exc:  # noqa: BLE001 - health must never raise
+        return Component("disk", "Диск", DOWN, f"ошибка проверки: {exc}", False)
+
+    percent_used = round(100 * usage.used / usage.total, 1)
+    free_gb = usage.free / (1024**3)
+    detail = f"занято {percent_used}% ({free_gb:.1f} ГБ свободно)"
+    if percent_used >= DISK_WARN_PERCENT:
+        return Component("disk", "Диск", WARN, detail, False)
+    return Component("disk", "Диск", OK, detail, False)
+
+
+async def check_ytdlp() -> Component:
+    """PLAN.md §12: the weekly canary (services/ops.py) flags this key when
+    YouTube changes break yt-dlp's extractor — audio signals silently degrade
+    otherwise, with no other visible symptom."""
+    from app.services.ops import YTDLP_DEGRADED_KEY
+
+    try:
+        since_raw = await redis_client.get(YTDLP_DEGRADED_KEY)
+    except Exception as exc:  # noqa: BLE001
+        return Component("ytdlp", "yt-dlp (аудио YouTube)", DOWN, f"Redis недоступен: {exc}", False)
+
+    if not since_raw:
+        return Component("ytdlp", "yt-dlp (аудио YouTube)", OK, "канарейка проходит", False)
+    try:
+        since = datetime.fromisoformat(since_raw)
+        detail = f"аудио деградировано с {since.date().isoformat()}"
+    except ValueError:
+        detail = "аудио деградировано (дата неизвестна)"
+    return Component("ytdlp", "yt-dlp (аудио YouTube)", WARN, detail, False)
+
+
 async def check_worker() -> Component:
     return await _heartbeat_component("worker", "Воркер (сканер)", "heartbeat:worker")
 
@@ -90,6 +134,8 @@ async def gather_health() -> tuple[str, list[Component]]:
     components = [
         await check_database(),
         await check_redis(),
+        check_disk(),
+        await check_ytdlp(),
         await check_worker(),
         await check_bot(),
     ]

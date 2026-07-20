@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Artist
-from app.services import detection
+from app.services import detection, ops, retention
 
 logger = logging.getLogger("trackguard.worker")
 
@@ -33,6 +33,30 @@ async def scan_catalog(ctx: dict, artist_id: int, actor_user_id: int | None = No
         except Exception as exc:  # noqa: BLE001 - a scan must never crash the worker
             logger.exception("scan_catalog failed for artist %s", artist_id)
             return {"error": str(exc), "artist_id": artist_id}
+
+
+async def run_retention(ctx: dict) -> dict:
+    """Daily: shrink old evidence covers so disk usage stays bounded (PLAN.md §12)."""
+    async with SessionLocal() as session:
+        try:
+            result = await retention.compress_old_evidence(session)
+            await session.commit()
+            return result
+        except Exception as exc:  # noqa: BLE001 - a retention pass must never crash the worker
+            logger.exception("retention pass failed")
+            return {"error": str(exc)}
+
+
+async def run_dead_man_ping(ctx: dict) -> None:
+    await ops.dead_man_ping()
+
+
+async def run_ytdlp_maintenance(ctx: dict) -> dict:
+    try:
+        return await ops.run_ytdlp_maintenance()
+    except Exception as exc:  # noqa: BLE001 - must never crash the worker
+        logger.exception("yt-dlp maintenance failed")
+        return {"error": str(exc)}
 
 
 async def write_heartbeat(ctx: dict) -> None:

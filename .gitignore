@@ -1,6 +1,9 @@
 # Secrets
 .env
 
+# Runtime deploy state (written by update.sh, read by rollback.sh)
+.last_deploy_commit
+
 # Python
 __pycache__/
 *.py[cod]

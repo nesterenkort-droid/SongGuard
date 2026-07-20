@@ -3,7 +3,12 @@
 Hermetic: `gather_health` is monkeypatched so no live DB/Redis is needed.
 """
 
+import pytest
+
+from app import health
 from app.health import Component
+from app.redis_client import redis_client
+from app.services.ops import YTDLP_DEGRADED_KEY
 
 
 def _fake_gather(overall, components):
@@ -51,3 +56,53 @@ async def test_openapi_available(client):
     resp = await client.get("/openapi.json")
     assert resp.status_code == 200
     assert resp.json()["info"]["title"] == "TrackGuard"
+
+
+def test_check_disk_warns_at_80_percent(monkeypatch):
+    class FakeUsage:
+        total = 100
+        used = 85
+        free = 15
+
+    monkeypatch.setattr(health.shutil, "disk_usage", lambda path: FakeUsage())
+    component = health.check_disk()
+    assert component.status == health.WARN
+    assert "85.0%" in component.detail
+
+
+def test_check_disk_ok_below_threshold(monkeypatch):
+    class FakeUsage:
+        total = 100
+        used = 40
+        free = 60
+
+    monkeypatch.setattr(health.shutil, "disk_usage", lambda path: FakeUsage())
+    component = health.check_disk()
+    assert component.status == health.OK
+
+
+def test_check_disk_missing_data_dir_is_ok(monkeypatch):
+    def _raise(path):
+        raise FileNotFoundError()
+
+    monkeypatch.setattr(health.shutil, "disk_usage", _raise)
+    component = health.check_disk()
+    assert component.status == health.OK
+
+
+@pytest.mark.asyncio
+async def test_check_ytdlp_ok_when_no_degradation_flag():
+    await redis_client.delete(YTDLP_DEGRADED_KEY)
+    component = await health.check_ytdlp()
+    assert component.status == health.OK
+
+
+@pytest.mark.asyncio
+async def test_check_ytdlp_warns_with_degradation_flag():
+    await redis_client.set(YTDLP_DEGRADED_KEY, "2026-07-01T00:00:00+00:00")
+    try:
+        component = await health.check_ytdlp()
+        assert component.status == health.WARN
+        assert "2026-07-01" in component.detail
+    finally:
+        await redis_client.delete(YTDLP_DEGRADED_KEY)

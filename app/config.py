@@ -66,6 +66,16 @@ class Settings(BaseSettings):
     # --- Health / heartbeats ---
     heartbeat_ttl_seconds: int = 180
 
+    # --- Ops (M7, PLAN.md §12) ---
+    # External dead-man switch: https://healthchecks.io free check "Ping URL".
+    # If the whole VPS dies, nothing running on it can report that — this external
+    # watchdog notices the missing ping and alerts instead.
+    healthchecks_ping_url: str | None = None
+    dead_man_ping_interval_seconds: int = 300
+    # yt-dlp canary: a known-good, stable video (e.g. one of the artist's own
+    # uploads) to test-extract weekly. Empty = canary skipped (nothing configured).
+    ytdlp_canary_url: str | None = None
+
     @property
     def admin_ids(self) -> list[int]:
         return [int(x) for x in self.admin_tg_ids.split(",") if x.strip()]
