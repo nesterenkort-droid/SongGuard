@@ -2,19 +2,19 @@
 {% block title %}{{ artist.name }} — TrackGuard{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-4">
+<div class="flex items-center justify-between mb-4 flex-wrap gap-2">
   <div>
     <a href="/catalog" class="text-sm link link-hover">← Каталог</a>
     <h1 class="text-2xl font-bold">{{ artist.name }}</h1>
   </div>
-  <div class="flex gap-2 items-center">
+  <div class="flex gap-2 items-center flex-wrap">
     {% if artist.apple_artist_id %}<span class="badge">Apple {{ artist.apple_artist_id }}</span>{% endif %}
     {% if artist.spotify_artist_id %}<span class="badge badge-success">Spotify</span>{% endif %}
     {% set variant_count = tracks | selectattr('is_variant') | rejectattr('is_muted') | list | length %}
     {% if variant_count %}
     <form method="post" action="/catalog/artist/{{ artist.id }}/mute-variants"
           onsubmit="return confirm('Заглушить все варианты ({{ variant_count }})? Их перестанут сканировать, а находки по ним скроются.');">
-      <button class="btn btn-xs btn-outline btn-warning"
+      <button class="btn btn-sm btn-outline btn-warning"
               title="Заглушить все официальные варианты (Slowed/Nightcore/…): не сканируем, находки скрываются">
         🔇 Заглушить варианты ({{ variant_count }})
       </button>
@@ -23,23 +23,34 @@
   </div>
 </div>
 
+<div class="text-xs text-base-content/60 mb-3 flex flex-wrap gap-x-4 gap-y-1">
+  <span>🔥 <b>слежу</b> — частый скан</span>
+  <span>📍 обычная ротация</span>
+  <span>🔇 <b>заглушён</b> — не сканируем, находки скрыты</span>
+  <span>↑ загрузить оригинал (WAV/MP3) для сверки по звуку</span>
+</div>
+
 {% if tracks %}
 <div class="overflow-x-auto">
   <table class="table table-sm bg-base-100 rounded-lg">
     <thead>
       <tr>
-        <th>Обложка</th><th>Название</th><th>Дата</th><th>Длит.</th>
-        <th>ISRC</th><th>Аудио</th><th>Оригинал</th><th></th>
+        <th></th>
+        <th>Название</th>
+        <th class="whitespace-nowrap">Дата</th>
+        <th>Длит.</th>
+        <th>Аудио</th>
+        <th class="text-right">Слежка / оригинал</th>
       </tr>
     </thead>
     <tbody>
       {% for t in tracks %}
-      <tr>
-        <td>
+      <tr class="{% if t.is_muted %}opacity-50{% endif %}">
+        <td class="w-12">
           {% if t.cover_path %}
-          <img src="/media/covers/{{ t.cover_path }}" alt="" class="w-12 h-12 rounded object-cover" />
+          <img src="/media/covers/{{ t.cover_path }}" alt="" class="w-10 h-10 rounded object-cover" />
           {% else %}
-          <div class="w-12 h-12 rounded bg-base-300"></div>
+          <div class="w-10 h-10 rounded bg-base-300"></div>
           {% endif %}
         </td>
         <td>
@@ -50,40 +61,37 @@
             {% elif t.is_hot_pinned %}<span class="badge badge-xs badge-error">🔥 слежу</span>{% endif %}
           </div>
         </td>
-        <td class="text-xs">{{ t.release_date or "—" }}</td>
-        <td class="text-xs">
+        <td class="text-xs whitespace-nowrap">{{ t.release_date or "—" }}</td>
+        <td class="text-xs whitespace-nowrap">
           {% if t.duration_ms %}{{ t.duration_ms // 60000 }}:{{ "%02d"|format((t.duration_ms // 1000) % 60) }}{% else %}—{% endif %}
         </td>
-        <td class="text-xs font-mono">{{ t.isrc or "—" }}</td>
         <td>
           {% if t.id in panako_indexed %}
-          <span class="badge badge-xs badge-success" title="Panako проиндексировал оригинал — аудио-сверка работает">🎵 готово к сверке</span>
+          <span class="badge badge-xs badge-success" title="Panako проиндексировал оригинал — аудио-сверка работает">🎵</span>
           {% elif t.audio_ref_status == "full" %}
-          <span class="badge badge-xs badge-warning" title="Файл загружен, но Panako его ещё не проиндексировал">⏳ обрабатывается</span>
+          <span class="badge badge-xs badge-warning" title="Файл загружен, Panako ещё обрабатывает">⏳</span>
           {% elif t.audio_ref_status == "preview" %}<span class="badge badge-xs">превью</span>
           {% else %}<span class="badge badge-xs badge-ghost">нет</span>{% endif %}
         </td>
         <td>
-          <form method="post" action="/catalog/track/{{ t.id }}/upload" enctype="multipart/form-data"
-                class="flex items-center gap-1">
-            <input type="file" name="file" required
-                   class="file-input file-input-xs file-input-bordered w-36" />
-            <button class="btn btn-xs">↑</button>
-          </form>
-        </td>
-        <td>
-          <div class="flex gap-1">
-            <form method="post" action="/catalog/track/{{ t.id }}/pin">
+          <div class="flex items-center justify-end gap-1">
+            <form method="post" action="/catalog/track/{{ t.id }}/pin" class="inline">
               <button class="btn btn-xs btn-ghost"
                       title="{% if t.is_hot_pinned %}Убрать из активной слежки{% else %}Следить активно (частый скан){% endif %}">
                 {% if t.is_hot_pinned %}🔥{% else %}📍{% endif %}
               </button>
             </form>
-            <form method="post" action="/catalog/track/{{ t.id }}/mute">
+            <form method="post" action="/catalog/track/{{ t.id }}/mute" class="inline">
               <button class="btn btn-xs btn-ghost"
                       title="{% if t.is_muted %}Снять заглушку (снова сканировать){% else %}Заглушить: не сканировать и скрыть находки{% endif %}">
                 {% if t.is_muted %}🔊{% else %}🔇{% endif %}
               </button>
+            </form>
+            <form method="post" action="/catalog/track/{{ t.id }}/upload" enctype="multipart/form-data" class="inline">
+              <label class="btn btn-xs btn-ghost cursor-pointer" title="Загрузить оригинал WAV/MP3">
+                ↑
+                <input type="file" name="file" class="hidden" onchange="this.form.submit()" />
+              </label>
             </form>
           </div>
         </td>
@@ -92,10 +100,6 @@
     </tbody>
   </table>
 </div>
-<p class="text-xs text-base-content/50 mt-2">
-  «Оригинал» — загрузите исходный WAV/MP3 для точного аудио-сравнения (используется в M5).
-  Официальные версии (Slowed/Nightcore) помечены — они не считаются пиратством.
-</p>
 {% else %}
 <div class="text-center text-base-content/60 py-12">У артиста пока нет треков.</div>
 {% endif %}
